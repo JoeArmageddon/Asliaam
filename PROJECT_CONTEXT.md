@@ -49,6 +49,9 @@ Each backend result must map to one of these mangoes and expose the associated s
 - Replaced the prompt with the full mango quality knowledge system covering unripe, semi-ripe, perfect, over-ripe, spoiled, ripening type, strict geography, confidence, reasoning, dishes, and recipes.
 - Added a 2800 ms OpenRouter timeout so slow model responses fall back to the default Alphonso result and keep the scanner demo responsive.
 - Final mobile sweep: history is persisted in browser localStorage with old-key migration and quota-safe compact fallback, the old fixed history tray was replaced with a smaller bottom nav, mobile text sizing was tightened, and long labels now wrap instead of clipping.
+- Added agricultural guide knowledge from `mango_varities.pdf` and `Mango_Handling_and_Ripening_Protocol_Eng.pdf` without changing the API/UI result contract.
+- Added `scripts/extractMangoGuideKnowledge.mjs` and `npm run extract:mango-knowledge` to read both PDFs and emit summarized structured rules only, not full PDF text.
+- Added `lib/mangoGuideKnowledge.js` as the compact cached rule set appended to the existing system prompt. The prompt remains lightweight and still sends only the user image plus `mango_types_india.jpeg` reference image.
 
 ## Deployment Notes
 
