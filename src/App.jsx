@@ -9,7 +9,12 @@ const EMPTY_RESULT = {
   ripeness: "",
   ripening_type: "",
   confidence: "",
-  dishes: []
+  dishes: [],
+  source: "live",
+  fallbackTheme: "",
+  fallbackTitle: "",
+  fallbackText: "",
+  failureReason: ""
 };
 
 const SCAN_STEPS = [
@@ -60,6 +65,39 @@ const ERROR_TIPS = [
     icon: "cleaning_services",
     title: "Wipe the lens",
     text: "A quick clean can make the next scan noticeably sharper."
+  }
+];
+
+const FALLBACK_RESULT_VARIANTS = [
+  {
+    fallbackTheme: "sunburst",
+    fallbackTitle: "Sunburst backup card",
+    fallbackText: "The live model missed this round, so this warm market-style result keeps the scan moving.",
+    name: "Likely Alphonso-type mango",
+    ripeness: "Perfect",
+    ripening_type: "Likely natural",
+    confidence: "Backup read",
+    dishes: ["Mango lassi", "Mango shrikhand", "Fresh mango slices"]
+  },
+  {
+    fallbackTheme: "leaflight",
+    fallbackTitle: "Leaflight backup card",
+    fallbackText: "This static pairing card steps in when the AI route is unavailable.",
+    name: "Likely Kesar-type mango",
+    ripeness: "Perfect",
+    ripening_type: "Likely natural",
+    confidence: "Backup read",
+    dishes: ["Mango smoothie", "Aamras", "Mango yogurt bowl"]
+  },
+  {
+    fallbackTheme: "spicegrid",
+    fallbackTitle: "Spicegrid backup card",
+    fallbackText: "Fallback mode is active, so the app is serving a bold best-effort tasting card.",
+    name: "Likely table mango",
+    ripeness: "Slightly ripe",
+    ripening_type: "Likely market ripened",
+    confidence: "Backup read",
+    dishes: ["Mango chutney", "Mango salsa", "Mango chaat"]
   }
 ];
 
@@ -135,8 +173,30 @@ function normalizeResult(payload = {}) {
     ripeness: payload.ripeness || "Perfect",
     ripening_type: payload.ripening_type || "Natural",
     confidence,
-    dishes: Array.isArray(payload.dishes) ? payload.dishes.slice(0, 3) : []
+    dishes: Array.isArray(payload.dishes) ? payload.dishes.slice(0, 3) : [],
+    source: payload.source || "live",
+    fallbackTheme: payload.fallbackTheme || "",
+    fallbackTitle: payload.fallbackTitle || "",
+    fallbackText: payload.fallbackText || "",
+    failureReason: payload.failureReason || ""
   };
+}
+
+function buildFallbackResult(file, failureReason = "") {
+  const seed = `${file?.name || ""}-${file?.size || 0}-${file?.lastModified || 0}`;
+  let hash = 0;
+
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash + seed.charCodeAt(index) * (index + 1)) % 9973;
+  }
+
+  const variant = FALLBACK_RESULT_VARIANTS[hash % FALLBACK_RESULT_VARIANTS.length];
+
+  return normalizeResult({
+    ...variant,
+    source: "fallback",
+    failureReason: failureReason || "Live AI analysis was unavailable for this scan."
+  });
 }
 
 function formatConfidence(confidence) {
@@ -387,6 +447,7 @@ function App() {
   const hasHistory = history.length > 0;
   const recipes = analysis.dishes;
   const confidenceValue = numericConfidence(analysis.confidence);
+  const isFallbackResult = analysis.source === "fallback";
 
   function startScanner() {
     setActiveTab("scan");
@@ -549,8 +610,21 @@ function App() {
       setHistory((current) => [historyEntry, ...current].slice(0, 12));
       setScanPhase("results");
     } catch (requestError) {
-      setError(requestError.message || "We could not analyze this photo.");
-      setScanPhase("error");
+      const fallbackResult = buildFallbackResult(
+        selectedFile,
+        requestError.message || "We could not analyze this photo live."
+      );
+      const historyEntry = {
+        id: Date.now(),
+        createdAt: new Date().toISOString(),
+        image: selectedImage,
+        ...fallbackResult
+      };
+
+      setError("");
+      setAnalysis(fallbackResult);
+      setHistory((current) => [historyEntry, ...current].slice(0, 12));
+      setScanPhase("results");
     }
   }
 
@@ -885,7 +959,7 @@ function App() {
     return (
       <m.section className="screen results-screen" {...pageTransition}>
         <m.div
-          className="result-hero"
+          className={`result-hero${isFallbackResult ? ` fallback-theme ${analysis.fallbackTheme}` : ""}`}
           initial={{ opacity: 0, y: 80 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
@@ -910,9 +984,20 @@ function App() {
               <span />
             </div>
 
+            {isFallbackResult && (
+              <m.div className={`fallback-banner fallback-${analysis.fallbackTheme}`} variants={staggerItem}>
+                <div>
+                  <p className="eyebrow">Backup Result Card</p>
+                  <strong>{analysis.fallbackTitle || "Static studio read"}</strong>
+                  <p>{analysis.fallbackText || "Always-on mode stepped in for this scan."}</p>
+                </div>
+                <span className="fallback-pill">Always-on mode</span>
+              </m.div>
+            )}
+
             <m.div className="result-summary-header" variants={staggerItem}>
               <div>
-                <p className="eyebrow">Identification Result</p>
+                <p className="eyebrow">{isFallbackResult ? "Best-Effort Result" : "Identification Result"}</p>
                 <h2>{analysis.name || "Classic mango"}</h2>
               </div>
               <span className="confidence-badge">{formatConfidence(analysis.confidence)}</span>
@@ -945,9 +1030,15 @@ function App() {
             </m.div>
 
             <m.div className="result-chip-row" variants={staggerItem}>
-              <span className="result-chip">Demo ready</span>
-              <span className="result-chip">Fast read</span>
+              <span className="result-chip">{isFallbackResult ? "Static backup" : "Demo ready"}</span>
+              <span className="result-chip">{isFallbackResult ? "Scan saved" : "Fast read"}</span>
             </m.div>
+
+            {isFallbackResult && analysis.failureReason && (
+              <m.p className="fallback-reason" variants={staggerItem}>
+                Live analysis note: {analysis.failureReason}
+              </m.p>
+            )}
           </m.div>
         </m.div>
 
@@ -959,7 +1050,7 @@ function App() {
         >
           <m.div className="section-heading" variants={staggerItem}>
             <div>
-              <p className="eyebrow">Exact API Suggestions</p>
+              <p className="eyebrow">{isFallbackResult ? "Backup Pairing Suggestions" : "Exact API Suggestions"}</p>
               <h3>Recipe ideas</h3>
             </div>
             <ActionButton
@@ -1103,7 +1194,9 @@ function App() {
                     {item.ripeness} | {item.ripening_type}
                   </p>
                   <small>
-                    {(item.dishes || []).slice(0, 2).join(" | ") || "Tap to reopen scan"}
+                    {item.source === "fallback"
+                      ? "Backup result card"
+                      : (item.dishes || []).slice(0, 2).join(" | ") || "Tap to reopen scan"}
                   </small>
                 </div>
               </ActionButton>
@@ -1225,7 +1318,9 @@ function App() {
                       : activeTab === "profile"
                         ? "Profile"
                         : scanPhase === "results"
-                          ? "Scan Results"
+                          ? isFallbackResult
+                            ? "Backup Result"
+                            : "Scan Results"
                           : scanPhase === "error"
                             ? "Try Another Shot"
                             : "Ready to Scan"}
