@@ -9,6 +9,7 @@ const LEGACY_STORAGE_KEY = "asli-aam-scan-history";
 const HISTORY_LIMIT = 8;
 
 const FALLBACK_RESULT = {
+  is_mango: true,
   name: "Alphonso",
   state: "Maharashtra",
   ripeness: "Perfect",
@@ -41,6 +42,7 @@ const FALLBACK_RESULT = {
 };
 
 const EMPTY_RESULT = {
+  is_mango: true,
   name: "",
   state: "",
   ripeness: "",
@@ -131,6 +133,7 @@ const normalizeRecipes = (value, fallbackRecipes) => {
 };
 
 const normalizeResult = (payload = {}) => ({
+  is_mango: payload.is_mango !== false,
   name: String(payload.name || FALLBACK_RESULT.name).trim(),
   state: String(payload.state || FALLBACK_RESULT.state).trim(),
   ripeness: String(payload.ripeness || FALLBACK_RESULT.ripeness).trim(),
@@ -558,6 +561,12 @@ function App() {
         throw new Error(payload.error || "Analysis failed.");
       }
 
+      if (payload?.is_mango === false) {
+        setAnalysis({ ...EMPTY_RESULT, is_mango: false });
+        setScreen("not-mango");
+        return;
+      }
+
       const nextResult = normalizeResult(payload);
       setAnalysis(nextResult);
       saveResult(nextResult);
@@ -813,6 +822,41 @@ function App() {
     </m.section>
   );
 
+  const renderNotMango = () => (
+    <m.section className="grid min-h-[calc(100dvh-7rem)] place-items-center px-4 py-6" {...pageTransition}>
+      <m.div
+        className="relative max-w-lg overflow-hidden rounded-[2rem] border border-black/10 bg-white/90 p-7 text-center shadow-[0_34px_100px_rgba(16,24,20,0.14)] backdrop-blur"
+        initial={{ opacity: 0, scale: 0.92, y: 24 }}
+        animate={{ opacity: 1, scale: [0.92, 1.03, 1], y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+      >
+        <div className="absolute inset-x-0 top-0 h-2 bg-[linear-gradient(90deg,#ef476f,#f2c94c,#11998e)]" />
+        <m.div
+          className="mx-auto grid h-24 w-24 place-items-center rounded-[1.5rem] bg-[#f2c94c] text-zinc-950 shadow-[0_12px_0_#101814]"
+          animate={{ y: [0, -8, 0] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <Icon name="cancel" filled className="text-5xl" />
+        </m.div>
+        <h1 className="mt-7 font-display text-4xl font-black leading-none text-zinc-950">
+          Uh oh... that's not a mango
+        </h1>
+        <p className="mx-auto mt-4 max-w-sm text-lg leading-8 text-zinc-700">
+          Try scanning a real mango!
+        </p>
+        <MotionButton
+          type="button"
+          onClick={resetScanner}
+          className="mt-7 inline-flex min-h-14 items-center justify-center gap-3 rounded-lg bg-zinc-950 px-6 font-black text-white shadow-[0_12px_0_#f2c94c]"
+        >
+          <Icon name="center_focus_strong" filled />
+          Scan Again
+        </MotionButton>
+      </m.div>
+      {hiddenUpload}
+    </m.section>
+  );
+
   const renderHistory = () => (
     <m.section className="mx-auto grid min-h-[calc(100dvh-7rem)] w-full max-w-5xl content-start gap-5 px-4 py-6 md:px-8" {...pageTransition}>
       <div className="rounded-[2rem] border border-black/10 bg-white/85 p-5 shadow-[0_28px_80px_rgba(16,24,20,0.12)] backdrop-blur md:p-7">
@@ -913,6 +957,7 @@ function App() {
             {screen === "scan" && renderScan()}
             {screen === "scanning" && renderScanning()}
             {screen === "result" && renderResult()}
+            {screen === "not-mango" && renderNotMango()}
             {screen === "history" && renderHistory()}
             {screen === "error" && renderError()}
           </div>

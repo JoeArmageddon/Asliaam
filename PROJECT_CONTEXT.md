@@ -54,6 +54,8 @@ Each backend result must map to one of these mangoes and expose the associated s
 - Added `lib/mangoGuideKnowledge.js` as the compact cached rule set appended to the existing system prompt. The prompt remains lightweight and still sends only the user image plus `mango_types_india.jpeg` reference image.
 - Final accuracy pass: backend now verifies the selected mango against trait keywords from the model reasoning, corrects state from the canonical dataset, validates ripeness from visual reasoning cues, repairs reasoning so it includes visual comparison, and uses safe spoiled-fruit dish/recipe fallbacks.
 - Shami assets now import from root `/assets` PNG files and render responsively with fade, bounce, slide, and scale motion.
+- Added advanced ripeness guide and non-mango flow. Backend can return `{ "is_mango": false }` for clearly non-mango inputs; frontend shows a playful retry screen and does not save non-mango scans to local history.
+- Extended ripeness validation with color + texture cues for unripe, semi-ripe, perfect, overripe, and spoiled, while keeping a single OpenRouter API call.
 
 ## Deployment Notes
 
