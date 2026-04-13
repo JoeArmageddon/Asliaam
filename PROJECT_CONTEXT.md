@@ -55,6 +55,7 @@ Each backend result must map to one of these mangoes and expose the associated s
 - Final accuracy pass: backend now verifies the selected mango against trait keywords from the model reasoning, corrects state from the canonical dataset, validates ripeness from visual reasoning cues, repairs reasoning so it includes visual comparison, and uses safe spoiled-fruit dish/recipe fallbacks.
 - Shami assets now import from root `/assets` PNG files and render responsively with fade, bounce, slide, and scale motion.
 - Added advanced ripeness guide and non-mango flow. Backend can return `{ "is_mango": false }` for clearly non-mango inputs; frontend shows a playful retry screen and does not save non-mango scans to local history.
+- Added local recipe personalization through `mangoRecipes.js`. OpenRouter no longer generates dishes or recipe steps; backend filters local recipes by ripeness first and mango variety second, returns top 3 plus the full filtered list for the frontend Explore More flow.
 - Extended ripeness validation with color + texture cues for unripe, semi-ripe, perfect, overripe, and spoiled, while keeping a single OpenRouter API call.
 
 ## Deployment Notes

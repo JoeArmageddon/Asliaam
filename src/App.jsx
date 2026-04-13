@@ -20,6 +20,7 @@ const FALLBACK_RESULT = {
   recipes: [
     {
       name: "Aamras",
+      type: "Dessert",
       steps: [
         "Peel and cube the ripe mango.",
         "Blend with chilled milk or water until silky.",
@@ -29,6 +30,29 @@ const FALLBACK_RESULT = {
     },
     {
       name: "Mango Shrikhand",
+      type: "Dessert",
+      steps: [
+        "Whisk hung curd until smooth.",
+        "Fold in mango pulp and powdered sugar.",
+        "Add cardamom and chopped pistachios.",
+        "Chill for 30 minutes before serving."
+      ]
+    }
+  ],
+  all_recipes: [
+    {
+      name: "Aamras",
+      type: "Dessert",
+      steps: [
+        "Peel and cube the ripe mango.",
+        "Blend with chilled milk or water until silky.",
+        "Add cardamom and a small pinch of saffron.",
+        "Serve cold with puri or as a dessert bowl."
+      ]
+    },
+    {
+      name: "Mango Shrikhand",
+      type: "Dessert",
       steps: [
         "Whisk hung curd until smooth.",
         "Fold in mango pulp and powdered sugar.",
@@ -51,6 +75,7 @@ const EMPTY_RESULT = {
   reasoning: "",
   dishes: [],
   recipes: [],
+  all_recipes: [],
   source: "live",
   failureReason: ""
 };
@@ -114,7 +139,7 @@ const normalizeList = (value, fallback) => {
   return items.length ? items : fallback;
 };
 
-const normalizeRecipes = (value, fallbackRecipes) => {
+const normalizeRecipes = (value, fallbackRecipes, limit = 3) => {
   if (!Array.isArray(value)) {
     return fallbackRecipes;
   }
@@ -123,28 +148,46 @@ const normalizeRecipes = (value, fallbackRecipes) => {
     .map((recipe, index) => {
       const fallback = fallbackRecipes[index] || fallbackRecipes[0];
       const name = String(recipe?.name || fallback.name).trim();
+      const type = String(recipe?.type || fallback.type || "Dessert").trim();
       const steps = normalizeList(recipe?.steps, fallback.steps).slice(0, 5);
-      return { name, steps: steps.length >= 3 ? steps : fallback.steps };
+      return { name, type, steps: steps.length >= 3 ? steps : fallback.steps };
     })
     .filter((recipe) => recipe.name && recipe.steps.length)
-    .slice(0, 2);
+    .slice(0, limit);
 
   return recipes.length ? recipes : fallbackRecipes;
 };
 
-const normalizeResult = (payload = {}) => ({
-  is_mango: payload.is_mango !== false,
-  name: String(payload.name || FALLBACK_RESULT.name).trim(),
-  state: String(payload.state || FALLBACK_RESULT.state).trim(),
-  ripeness: String(payload.ripeness || FALLBACK_RESULT.ripeness).trim(),
-  ripening_type: String(payload.ripening_type || FALLBACK_RESULT.ripening_type).trim(),
-  confidence: clampConfidence(payload.confidence),
-  reasoning: String(payload.reasoning || FALLBACK_RESULT.reasoning).trim(),
-  dishes: normalizeList(payload.dishes, FALLBACK_RESULT.dishes).slice(0, 4),
-  recipes: normalizeRecipes(payload.recipes, FALLBACK_RESULT.recipes),
-  source: payload.source || "live",
-  failureReason: payload.failureReason || ""
-});
+const normalizeAllRecipes = (payloadRecipes, topRecipes) => {
+  const allRecipes = normalizeRecipes(payloadRecipes, topRecipes, Number.POSITIVE_INFINITY);
+  const topNames = new Set(topRecipes.map((recipe) => recipe.name));
+  const missingTopRecipes = topRecipes.filter((recipe) => !allRecipes.some((item) => item.name === recipe.name));
+
+  return [...missingTopRecipes, ...allRecipes].sort((a, b) => {
+    const aTop = topNames.has(a.name) ? 0 : 1;
+    const bTop = topNames.has(b.name) ? 0 : 1;
+    return aTop - bTop;
+  });
+};
+
+const normalizeResult = (payload = {}) => {
+  const recipes = normalizeRecipes(payload.recipes, FALLBACK_RESULT.recipes);
+
+  return {
+    is_mango: payload.is_mango !== false,
+    name: String(payload.name || FALLBACK_RESULT.name).trim(),
+    state: String(payload.state || FALLBACK_RESULT.state).trim(),
+    ripeness: String(payload.ripeness || FALLBACK_RESULT.ripeness).trim(),
+    ripening_type: String(payload.ripening_type || FALLBACK_RESULT.ripening_type).trim(),
+    confidence: clampConfidence(payload.confidence),
+    reasoning: String(payload.reasoning || FALLBACK_RESULT.reasoning).trim(),
+    dishes: normalizeList(payload.dishes, recipes.map((recipe) => recipe.name)).slice(0, 4),
+    recipes,
+    all_recipes: normalizeAllRecipes(payload.all_recipes, recipes),
+    source: payload.source || "live",
+    failureReason: payload.failureReason || ""
+  };
+};
 
 const buildFallbackResult = (message) =>
   normalizeResult({
@@ -231,14 +274,27 @@ function InfoTile({ label, value }) {
 }
 
 function RecipeAccordion({ recipe, isOpen, onToggle }) {
+  const category = recipe.type || "Dessert";
+
   return (
-    <article className="overflow-hidden rounded-2xl border border-black/10 bg-[#f6f8ef]">
+    <m.article
+      className="overflow-hidden rounded-2xl border border-black/10 bg-[#f6f8ef]"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.24, ease: "easeOut" }}
+    >
       <button
         type="button"
         onClick={onToggle}
         className="flex w-full items-center justify-between gap-4 p-4 text-left font-black"
       >
-        <span>{recipe.name}</span>
+        <span className="min-w-0">
+          <span className="block break-words">{recipe.name}</span>
+          <span className="mt-2 inline-flex rounded-lg bg-zinc-950 px-2 py-1 text-[0.68rem] font-black uppercase tracking-[0.12em] text-[#f2c94c]">
+            {category}
+          </span>
+        </span>
         <Icon name={isOpen ? "keyboard_arrow_up" : "keyboard_arrow_down"} />
       </button>
       <AnimatePresence initial={false}>
@@ -262,7 +318,7 @@ function RecipeAccordion({ recipe, isOpen, onToggle }) {
           </m.div>
         )}
       </AnimatePresence>
-    </article>
+    </m.article>
   );
 }
 
@@ -337,6 +393,7 @@ function App() {
   const [cameraAttempt, setCameraAttempt] = useState(0);
   const [scanStepIndex, setScanStepIndex] = useState(0);
   const [openRecipe, setOpenRecipe] = useState("");
+  const [showAllRecipes, setShowAllRecipes] = useState(false);
 
   useEffect(() => {
     setHistory(readStoredHistory());
@@ -440,6 +497,7 @@ function App() {
     setAnalysis(EMPTY_RESULT);
     setError("");
     setOpenRecipe("");
+    setShowAllRecipes(false);
     setScreen("scan");
     setCameraAttempt((current) => current + 1);
   };
@@ -457,6 +515,7 @@ function App() {
       setSelectedImage(dataUrl);
       setAnalysis(EMPTY_RESULT);
       setError("");
+      setShowAllRecipes(false);
       setScreen("scan");
     } catch (readError) {
       setError(readError.message);
@@ -504,6 +563,7 @@ function App() {
     setSelectedFile(new File([blob], `asli-aam-${Date.now()}.jpg`, { type: "image/jpeg" }));
     setSelectedImage(dataUrl);
     setError("");
+    setShowAllRecipes(false);
   };
 
   const saveResult = (nextResult) => {
@@ -545,6 +605,7 @@ function App() {
 
     setScanStepIndex(0);
     setOpenRecipe("");
+    setShowAllRecipes(false);
     setError("");
     setScreen("scanning");
 
@@ -585,6 +646,7 @@ function App() {
     setSelectedFile(null);
     setAnalysis(normalizeResult(item));
     setOpenRecipe("");
+    setShowAllRecipes(false);
     setScreen("result");
   };
 
@@ -727,7 +789,11 @@ function App() {
     </m.section>
   );
 
-  const renderResult = () => (
+  const renderResult = () => {
+    const visibleRecipes = showAllRecipes ? analysis.all_recipes : analysis.recipes;
+    const hasMoreRecipes = analysis.all_recipes.length > analysis.recipes.length;
+
+    return (
     <m.section className="mx-auto grid min-h-[calc(100dvh-7rem)] w-full max-w-6xl gap-5 px-4 py-5 md:px-8 md:py-6" {...pageTransition}>
       <div className="flex items-center justify-between gap-4">
         <MotionButton type="button" onClick={() => setScreen("home")} className="inline-flex min-h-12 items-center gap-2 rounded-lg bg-white px-4 font-black text-zinc-950 shadow-sm">
@@ -793,19 +859,47 @@ function App() {
           </div>
         </section>
         <section className="rounded-[2rem] border border-black/10 bg-white/90 p-5 shadow-[0_28px_80px_rgba(16,24,20,0.1)] md:p-7">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">Full recipes</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">Full recipes</p>
+              <h2 className="mt-2 font-display text-2xl font-black text-zinc-950">
+                {showAllRecipes ? "Recipe library" : "Top matches"}
+              </h2>
+            </div>
+            <span className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-emerald-800">
+              Local dataset
+            </span>
+          </div>
           <div className="mt-5 grid gap-3">
-            {analysis.recipes.map((recipe, index) => (
+            <AnimatePresence initial={false}>
+            {visibleRecipes.map((recipe, index) => (
               <RecipeAccordion key={recipe.name} recipe={recipe} isOpen={openRecipe ? openRecipe === recipe.name : index === 0} onToggle={() => setOpenRecipe((current) => (current === recipe.name ? "" : recipe.name))} />
             ))}
+            </AnimatePresence>
           </div>
-          <MotionButton type="button" onClick={() => speakResult(analysis)} className="mt-5 inline-flex min-h-12 items-center gap-2 rounded-lg bg-[#f2c94c] px-4 font-black text-zinc-950">
-            <Icon name="volume_up" /> Read Result Aloud
-          </MotionButton>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+            {hasMoreRecipes && (
+              <MotionButton
+                type="button"
+                onClick={() => {
+                  setShowAllRecipes((current) => !current);
+                  setOpenRecipe("");
+                }}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-4 font-black text-white"
+              >
+                <Icon name={showAllRecipes ? "unfold_less" : "restaurant_menu"} />
+                {showAllRecipes ? "Show Top Recipes" : "Explore More Recipes"}
+              </MotionButton>
+            )}
+            <MotionButton type="button" onClick={() => speakResult(analysis)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#f2c94c] px-4 font-black text-zinc-950">
+              <Icon name="volume_up" /> Read Result Aloud
+            </MotionButton>
+          </div>
         </section>
       </div>
     </m.section>
-  );
+    );
+  };
 
   const renderError = () => (
     <m.section className="grid min-h-[100dvh] place-items-center px-5 py-8" {...pageTransition}>
