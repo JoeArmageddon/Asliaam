@@ -460,6 +460,11 @@ img {
   object-fit: cover;
 }
 
+.camera-video.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .camera-placeholder {
   position: absolute;
   inset: 0;

@@ -364,6 +364,25 @@ function App() {
     };
   }, [activeTab, scanPhase, cameraAttempt]);
 
+  useEffect(() => {
+    if (activeTab !== "scan" || scanPhase !== "camera") {
+      return;
+    }
+
+    const video = videoRef.current;
+    const stream = mediaStreamRef.current;
+
+    if (!video || !stream) {
+      return;
+    }
+
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+    }
+
+    video.play().catch(() => {});
+  }, [activeTab, scanPhase, cameraStatus]);
+
   const currentStep = SCAN_STEPS[scanStepIndex];
   const hasHistory = history.length > 0;
   const recipes = analysis.dishes;
@@ -664,10 +683,10 @@ function App() {
       <m.section className="screen camera-screen" {...pageTransition}>
         <div className="camera-stage">
           <div className="camera-background" style={previewStyle}>
-            {showLiveCamera && (
+            {!selectedImage && (
               <video
                 ref={videoRef}
-                className="camera-video"
+                className={`camera-video${showLiveCamera ? "" : " hidden"}`}
                 autoPlay
                 playsInline
                 muted
