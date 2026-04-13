@@ -8,8 +8,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.join(rootDir, "dist");
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const OPENROUTER_SITE_URL = process.env.OPENROUTER_SITE_URL || `http://localhost:${PORT}`;
+const OPENROUTER_APP_NAME = process.env.OPENROUTER_APP_NAME || "Asli Aam Mango Scanner";
 
 app.use(
   express.json({
@@ -18,8 +20,10 @@ app.use(
 );
 
 function normalizePayload(payload = {}) {
+  const rawName = typeof payload.name === "string" ? payload.name.trim() : "";
   const rawConfidence = payload.confidence;
   let confidence = rawConfidence || "High confidence";
+  const name = rawName || "Likely table mango";
 
   if (typeof rawConfidence === "number" && rawConfidence > 0 && rawConfidence <= 1) {
     confidence = Math.round(rawConfidence * 100);
@@ -33,7 +37,7 @@ function normalizePayload(payload = {}) {
   }
 
   return {
-    name: payload.name || "Classic mango",
+    name,
     ripeness: payload.ripeness || "Perfect",
     ripening_type: payload.ripening_type || "Likely natural",
     confidence,
@@ -70,7 +74,7 @@ function buildMessages(image) {
         {
           type: "text",
           text:
-            "You are a mango expert. Analyze this mango image and respond in JSON: { 'name': '', 'ripeness': '', 'ripening_type': '', 'confidence': '', 'dishes': [] } Keep answers short, confident, and realistic. Identify the mango variety if possible, estimate ripeness as Unripe, Perfect, or Overripe, guess whether it looks naturally or artificially ripened even if uncertain, and suggest 2 to 3 dishes that fit the ripeness. Return JSON only."
+            "You are a mango expert. Analyze this mango image and respond in JSON: { 'name': '', 'ripeness': '', 'ripening_type': '', 'confidence': '', 'dishes': [] } Keep answers short, confident, and realistic. Always provide a best-guess mango type in 'name' and never leave it blank. If uncertain, still return your most likely type label such as 'Likely Alphonso-type mango', 'Likely Kesar-type mango', or 'Likely table mango'. Estimate ripeness as Unripe, Perfect, or Overripe, guess whether it looks naturally or artificially ripened even if uncertain, and suggest 2 to 3 dishes that fit the ripeness. Return JSON only."
         },
         {
           type: "image_url",
@@ -107,7 +111,13 @@ async function requestVisionAnalysis({ url, apiKey, model, image, maxTokensField
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
+      Authorization: `Bearer ${apiKey}`,
+      ...(url === OPENROUTER_URL
+        ? {
+            "HTTP-Referer": OPENROUTER_SITE_URL,
+            "X-OpenRouter-Title": OPENROUTER_APP_NAME
+          }
+        : {})
     },
     body: JSON.stringify({
       model,
@@ -134,10 +144,10 @@ async function requestVisionAnalysis({ url, apiKey, model, image, maxTokensField
 async function analyzeWithFallback(image) {
   const providers = [
     {
-      name: "openai",
-      url: OPENAI_URL,
-      apiKey: process.env.OPENAI_API_KEY,
-      model: "gpt-4o-mini",
+      name: "openrouter",
+      url: OPENROUTER_URL,
+      apiKey: process.env.OPENROUTER_API_KEY,
+      model: "openai/gpt-4o-mini",
       maxTokensField: "max_tokens"
     },
     {
@@ -167,7 +177,7 @@ async function analyzeWithFallback(image) {
     } catch (error) {
       lastError = error;
 
-      if (provider.name === "openai" && isRetryableProviderError(error.status, error.message)) {
+      if (provider.name === "openrouter" && isRetryableProviderError(error.status, error.message)) {
         continue;
       }
 
@@ -185,9 +195,9 @@ async function analyzeWithFallback(image) {
 app.post("/api/analyze", async (req, res) => {
   const { image } = req.body || {};
 
-  if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) {
+  if (!process.env.OPENROUTER_API_KEY && !process.env.GROQ_API_KEY) {
     return res.status(500).json({
-      error: "Missing AI API keys. Add OPENAI_API_KEY or GROQ_API_KEY before running the app."
+      error: "Missing AI API keys. Add OPENROUTER_API_KEY or GROQ_API_KEY before running the app."
     });
   }
 

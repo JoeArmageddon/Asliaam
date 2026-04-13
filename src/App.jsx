@@ -114,8 +114,10 @@ function toDataUrl(file) {
 }
 
 function normalizeResult(payload = {}) {
+  const rawName = typeof payload.name === "string" ? payload.name.trim() : "";
   const rawConfidence = payload.confidence;
   let confidence = rawConfidence || "High confidence";
+  const name = rawName || "Likely table mango";
 
   if (typeof rawConfidence === "number" && rawConfidence > 0 && rawConfidence <= 1) {
     confidence = Math.round(rawConfidence * 100);
@@ -129,7 +131,7 @@ function normalizeResult(payload = {}) {
   }
 
   return {
-    name: payload.name || "Classic mango",
+    name,
     ripeness: payload.ripeness || "Perfect",
     ripening_type: payload.ripening_type || "Natural",
     confidence,
@@ -241,11 +243,20 @@ function FadeImage({ className, alt, src }) {
   );
 }
 
+function stopMediaStream(stream) {
+  if (!stream) {
+    return;
+  }
+
+  stream.getTracks().forEach((track) => track.stop());
+}
+
 function App() {
-  const captureInputId = `${useId()}-capture`;
   const uploadInputId = `${useId()}-upload`;
-  const captureInputRef = useRef(null);
   const uploadInputRef = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const mediaStreamRef = useRef(null);
 
   const [activeTab, setActiveTab] = useState("home");
   const [scanPhase, setScanPhase] = useState("home");
@@ -255,6 +266,8 @@ function App() {
   const [history, setHistory] = useState([]);
   const [error, setError] = useState("");
   const [scanStepIndex, setScanStepIndex] = useState(0);
+  const [cameraStatus, setCameraStatus] = useState("idle");
+  const [cameraAttempt, setCameraAttempt] = useState(0);
 
   useEffect(() => {
     try {
@@ -288,6 +301,69 @@ function App() {
     return () => window.clearInterval(intervalId);
   }, [scanPhase]);
 
+  useEffect(() => {
+    const shouldOpenCamera = activeTab === "scan" && scanPhase === "camera";
+
+    if (!shouldOpenCamera) {
+      stopMediaStream(mediaStreamRef.current);
+      mediaStreamRef.current = null;
+      setCameraStatus("idle");
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+      return undefined;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraStatus("unsupported");
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function openCamera() {
+      setCameraStatus("requesting");
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: {
+              ideal: "environment"
+            }
+          },
+          audio: false
+        });
+
+        if (cancelled) {
+          stopMediaStream(stream);
+          return;
+        }
+
+        mediaStreamRef.current = stream;
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+
+        setCameraStatus("ready");
+      } catch {
+        setCameraStatus("blocked");
+      }
+    }
+
+    openCamera();
+
+    return () => {
+      cancelled = true;
+      stopMediaStream(mediaStreamRef.current);
+      mediaStreamRef.current = null;
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
+  }, [activeTab, scanPhase, cameraAttempt]);
+
   const currentStep = SCAN_STEPS[scanStepIndex];
   const hasHistory = history.length > 0;
   const recipes = analysis.dishes;
@@ -306,6 +382,17 @@ function App() {
     setError("");
     setActiveTab("scan");
     setScanPhase("camera");
+    setCameraAttempt((current) => current + 1);
+  }
+
+  function retryCamera() {
+    setError("");
+    setSelectedFile(null);
+    setSelectedImage("");
+    setAnalysis(EMPTY_RESULT);
+    setActiveTab("scan");
+    setScanPhase("camera");
+    setCameraAttempt((current) => current + 1);
   }
 
   function goHome() {
@@ -350,6 +437,56 @@ function App() {
     setActiveTab("scan");
     setScanPhase("preview");
     event.target.value = "";
+  }
+
+  async function captureFromCamera() {
+    if (cameraStatus === "blocked" || cameraStatus === "unsupported") {
+      setError(
+        cameraStatus === "blocked"
+          ? "Camera access is blocked. Allow camera permission in the browser to use the in-app camera."
+          : "This browser does not support the in-app camera here. Try a secure HTTPS or localhost session."
+      );
+      return;
+    }
+
+    if (cameraStatus !== "ready" || !videoRef.current || !canvasRef.current) {
+      setError("Camera is not ready yet. You can still upload a photo from your gallery.");
+      return;
+    }
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const width = video.videoWidth || 1080;
+    const height = video.videoHeight || 1440;
+
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+      setError("Unable to capture from the camera right now.");
+      return;
+    }
+
+    context.drawImage(video, 0, 0, width, height);
+
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+
+    if (!blob) {
+      setError("Unable to capture from the camera right now.");
+      return;
+    }
+
+    const file = new File([blob], `mango-${Date.now()}.jpg`, {
+      type: "image/jpeg"
+    });
+
+    setSelectedFile(file);
+    setSelectedImage(dataUrl);
+    setAnalysis(EMPTY_RESULT);
+    setError("");
+    setScanPhase("preview");
   }
 
   async function analyzeImage() {
@@ -511,21 +648,64 @@ function App() {
 
   function renderCamera() {
     const previewStyle = selectedImage ? { backgroundImage: `url(${selectedImage})` } : undefined;
+    const showLiveCamera = !selectedImage && cameraStatus === "ready";
+    const showCameraFallback = !selectedImage && cameraStatus !== "ready";
+    const isCameraIssue = cameraStatus === "blocked" || cameraStatus === "unsupported";
+    const cameraMessage =
+      cameraStatus === "requesting"
+        ? "Allow camera access to keep capture fully inside this screen."
+        : cameraStatus === "blocked"
+          ? "Browser permission is currently blocking the in-app camera."
+          : cameraStatus === "unsupported"
+            ? "This session cannot open an embedded camera preview."
+            : "Live camera preview stays inside the app.";
 
     return (
       <m.section className="screen camera-screen" {...pageTransition}>
         <div className="camera-stage">
           <div className="camera-background" style={previewStyle}>
-            {!selectedImage && (
+            {showLiveCamera && (
+              <video
+                ref={videoRef}
+                className="camera-video"
+                autoPlay
+                playsInline
+                muted
+              />
+            )}
+
+            {showCameraFallback && (
               <div className="camera-placeholder">
-                <m.img
-                  className="camera-logo"
-                  src={logoImage}
-                  alt="Asli Aam sticker logo"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.35, ease: "easeOut" }}
-                />
+                <div className="camera-placeholder-card">
+                  <m.img
+                    className="camera-logo"
+                    src={logoImage}
+                    alt="Asli Aam sticker logo"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.35, ease: "easeOut" }}
+                  />
+                  <div className="camera-status-copy">
+                    <strong>
+                      {cameraStatus === "requesting"
+                        ? "Opening camera..."
+                        : cameraStatus === "blocked"
+                          ? "Camera access blocked"
+                          : cameraStatus === "unsupported"
+                            ? "In-page camera unavailable"
+                            : "Camera ready"}
+                    </strong>
+                    <p>
+                      {cameraStatus === "requesting"
+                        ? "Allow camera permission to scan right inside the app."
+                        : cameraStatus === "blocked"
+                          ? "Enable camera access in the browser, then retry to keep capture inside this UI."
+                          : cameraStatus === "unsupported"
+                            ? "Embedded camera preview needs a supported secure browser context."
+                            : "Live camera preview opens here inside the app."}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
             <div className="camera-shade" />
@@ -540,11 +720,20 @@ function App() {
           </div>
 
           <div className="camera-hint">
-            {selectedImage ? "Mango locked in frame" : "Center the mango in the frame"}
+            {selectedImage
+              ? "Mango locked in frame"
+              : showLiveCamera
+                ? "Center the mango in the frame"
+                : "Camera preview opens here inside the app"}
           </div>
         </div>
 
         <div className="camera-controls">
+          <div className={`camera-status-banner${isCameraIssue ? " warning" : ""}`}>
+            <Icon name={isCameraIssue ? "warning" : "videocam"} />
+            <span>{selectedImage ? "Review the captured frame before analysis." : cameraMessage}</span>
+          </div>
+
           <div className="capture-row">
             <ActionButton className="utility-button" type="button" onClick={goHome}>
               <Icon name="arrow_back" />
@@ -553,7 +742,7 @@ function App() {
             <ActionButton
               className="capture-button"
               type="button"
-              onClick={selectedImage ? analyzeImage : () => captureInputRef.current?.click()}
+              onClick={selectedImage ? analyzeImage : captureFromCamera}
             >
               <span className="capture-button-inner">
                 <Icon name={selectedImage ? "center_focus_strong" : "photo_camera"} filled />
@@ -569,10 +758,10 @@ function App() {
             <ActionButton
               className="ghost-pill"
               type="button"
-              onClick={() => captureInputRef.current?.click()}
+              onClick={retryCamera}
             >
-              <Icon name="photo_camera" />
-              Capture
+              <Icon name={selectedImage ? "cameraswitch" : "videocam"} />
+              {selectedImage ? "Retake live" : "Open live camera"}
             </ActionButton>
             <ActionButton
               className="ghost-pill"
@@ -580,7 +769,7 @@ function App() {
               onClick={() => uploadInputRef.current?.click()}
             >
               <Icon name="image" />
-              Upload
+              Upload gallery
             </ActionButton>
           </div>
 
@@ -589,17 +778,10 @@ function App() {
               Analyze this mango
             </ActionButton>
           )}
+
+          {!selectedImage && error && <p className="camera-inline-error">{error}</p>}
         </div>
 
-        <input
-          id={captureInputId}
-          ref={captureInputRef}
-          className="sr-only"
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handleFileSelection}
-        />
         <input
           id={uploadInputId}
           ref={uploadInputRef}
@@ -608,6 +790,7 @@ function App() {
           accept="image/*"
           onChange={handleFileSelection}
         />
+        <canvas ref={canvasRef} className="sr-only" aria-hidden="true" />
       </m.section>
     );
   }
