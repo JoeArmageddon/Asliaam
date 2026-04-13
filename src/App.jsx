@@ -1,314 +1,317 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, LazyMotion, domAnimation, m } from "framer-motion";
 import logoImage from "./assets/asli-aam-logo.jpg";
 
-const STORAGE_KEY = "asli-aam-scan-history";
+const STORAGE_KEY = "asli-aam-scan-history-v2";
+const LEGACY_STORAGE_KEY = "asli-aam-scan-history";
+const HISTORY_LIMIT = 8;
+
+const FALLBACK_RESULT = {
+  name: "Alphonso",
+  state: "Maharashtra",
+  ripeness: "Perfect",
+  ripening_type: "Natural",
+  confidence: 88,
+  reasoning: "Golden skin, smooth peel, and oval shoulders match the closest trained profile.",
+  dishes: ["Aamras", "Mango shrikhand", "Mango lassi"],
+  recipes: [
+    {
+      name: "Aamras",
+      steps: [
+        "Peel and cube the ripe mango.",
+        "Blend with chilled milk or water until silky.",
+        "Add cardamom and a small pinch of saffron.",
+        "Serve cold with puri or as a dessert bowl."
+      ]
+    },
+    {
+      name: "Mango Shrikhand",
+      steps: [
+        "Whisk hung curd until smooth.",
+        "Fold in mango pulp and powdered sugar.",
+        "Add cardamom and chopped pistachios.",
+        "Chill for 30 minutes before serving."
+      ]
+    }
+  ],
+  source: "fallback",
+  failureReason: "Live analysis was unavailable, so a safe fallback result was used."
+};
 
 const EMPTY_RESULT = {
   name: "",
+  state: "",
   ripeness: "",
   ripening_type: "",
-  confidence: "",
+  confidence: 0,
+  reasoning: "",
   dishes: [],
+  recipes: [],
   source: "live",
-  fallbackTheme: "",
-  fallbackTitle: "",
-  fallbackText: "",
   failureReason: ""
 };
 
+const VARIETIES = [
+  ["Alphonso", "Maharashtra", "Golden oval, satin peel"],
+  ["Kesar", "Gujarat", "Orange-yellow, rounded shoulders"],
+  ["Dasheri", "Uttar Pradesh", "Long, slim, green-yellow"],
+  ["Langra", "Uttar Pradesh", "Green ripe skin, matte peel"],
+  ["Banganapalli", "Andhra Pradesh", "Large oblong, pale gold"],
+  ["Totapuri", "Karnataka", "Parrot-beak tip, angular"],
+  ["Himsagar", "West Bengal", "Round, deep yellow, soft peel"]
+];
+
 const SCAN_STEPS = [
-  {
-    title: "Analyzing mango...",
-    detail: "Reading peel tone, gloss, and first ripeness signals."
-  },
-  {
-    title: "Checking texture...",
-    detail: "Looking for natural ripening cues and firmness hints."
-  },
-  {
-    title: "Matching variety...",
-    detail: "Comparing shape, shoulders, and skin profile for variety clues."
-  }
-];
-
-const PROFILE_FACTS = [
-  {
-    icon: "bolt",
-    title: "Fast demo mode",
-    text: "The experience is tuned for crisp motion and quick product walkthroughs."
-  },
-  {
-    icon: "shield_lock",
-    title: "Secure backend",
-    text: "Image analysis runs through the server so API credentials stay protected."
-  },
-  {
-    icon: "restaurant",
-    title: "Recipe aware",
-    text: "Dish suggestions adapt to the exact ripeness read returned by the API."
-  }
-];
-
-const ERROR_TIPS = [
-  {
-    icon: "light_mode",
-    title: "Use brighter light",
-    text: "Natural light helps the scanner read surface color and texture more clearly."
-  },
-  {
-    icon: "center_focus_weak",
-    title: "Fill the frame",
-    text: "Keep the mango centered and large enough to capture its shape properly."
-  },
-  {
-    icon: "cleaning_services",
-    title: "Wipe the lens",
-    text: "A quick clean can make the next scan noticeably sharper."
-  }
-];
-
-const FALLBACK_RESULT_VARIANTS = [
-  {
-    fallbackTheme: "sunburst",
-    fallbackTitle: "Sunburst backup card",
-    fallbackText: "The live model missed this round, so this warm market-style result keeps the scan moving.",
-    name: "Likely Alphonso-type mango",
-    ripeness: "Perfect",
-    ripening_type: "Likely natural",
-    confidence: "Backup read",
-    dishes: ["Mango lassi", "Mango shrikhand", "Fresh mango slices"]
-  },
-  {
-    fallbackTheme: "leaflight",
-    fallbackTitle: "Leaflight backup card",
-    fallbackText: "This static pairing card steps in when the AI route is unavailable.",
-    name: "Likely Kesar-type mango",
-    ripeness: "Perfect",
-    ripening_type: "Likely natural",
-    confidence: "Backup read",
-    dishes: ["Mango smoothie", "Aamras", "Mango yogurt bowl"]
-  },
-  {
-    fallbackTheme: "spicegrid",
-    fallbackTitle: "Spicegrid backup card",
-    fallbackText: "Fallback mode is active, so the app is serving a bold best-effort tasting card.",
-    name: "Likely table mango",
-    ripeness: "Slightly ripe",
-    ripening_type: "Likely market ripened",
-    confidence: "Backup read",
-    dishes: ["Mango chutney", "Mango salsa", "Mango chaat"]
-  }
+  "Reading peel color and gloss",
+  "Matching silhouette to Indian varieties",
+  "Checking natural ripening cues",
+  "Building recipe suggestions"
 ];
 
 const pageTransition = {
-  initial: { opacity: 0, y: 20 },
-  animate: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.35,
-      ease: [0.22, 1, 0.36, 1]
-    }
-  },
-  exit: {
-    opacity: 0,
-    y: -20,
-    transition: {
-      duration: 0.28,
-      ease: "easeInOut"
-    }
-  }
+  initial: { opacity: 0, y: 18 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] } },
+  exit: { opacity: 0, y: -14, transition: { duration: 0.25, ease: "easeInOut" } }
 };
 
-const staggerParent = {
+const rise = {
+  hidden: { opacity: 0, y: 18 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.34, ease: [0.22, 1, 0.36, 1] } }
+};
+
+const stagger = {
   hidden: {},
-  visible: {
-    transition: {
-      staggerChildren: 0.1
-    }
-  }
+  visible: { transition: { staggerChildren: 0.07 } }
 };
 
-const staggerItem = {
-  hidden: { opacity: 0, y: 10 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.28,
-      ease: [0.22, 1, 0.36, 1]
-    }
-  }
-};
-
-function toDataUrl(file) {
-  return new Promise((resolve, reject) => {
+const toDataUrl = (file) =>
+  new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.onerror = () => reject(new Error("Unable to read this image."));
     reader.readAsDataURL(file);
   });
-}
 
-function normalizeResult(payload = {}) {
-  const rawName = typeof payload.name === "string" ? payload.name.trim() : "";
-  const rawConfidence = payload.confidence;
-  let confidence = rawConfidence || "High confidence";
-  const name = rawName || "Likely table mango";
-
-  if (typeof rawConfidence === "number" && rawConfidence > 0 && rawConfidence <= 1) {
-    confidence = Math.round(rawConfidence * 100);
+const clampConfidence = (value) => {
+  if (typeof value === "number") {
+    return Math.max(1, Math.min(100, Math.round(value)));
   }
 
-  if (typeof rawConfidence === "string") {
-    const parsed = Number(rawConfidence);
-    if (!Number.isNaN(parsed) && parsed > 0 && parsed <= 1) {
-      confidence = Math.round(parsed * 100);
+  const match = String(value || "").match(/\d+/);
+  return match ? Math.max(1, Math.min(100, Number(match[0]))) : 88;
+};
+
+const normalizeList = (value, fallback) => {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+
+  const items = value.map((item) => String(item || "").trim()).filter(Boolean);
+  return items.length ? items : fallback;
+};
+
+const normalizeRecipes = (value, fallbackRecipes) => {
+  if (!Array.isArray(value)) {
+    return fallbackRecipes;
+  }
+
+  const recipes = value
+    .map((recipe, index) => {
+      const fallback = fallbackRecipes[index] || fallbackRecipes[0];
+      const name = String(recipe?.name || fallback.name).trim();
+      const steps = normalizeList(recipe?.steps, fallback.steps).slice(0, 5);
+      return { name, steps: steps.length >= 3 ? steps : fallback.steps };
+    })
+    .filter((recipe) => recipe.name && recipe.steps.length)
+    .slice(0, 2);
+
+  return recipes.length ? recipes : fallbackRecipes;
+};
+
+const normalizeResult = (payload = {}) => ({
+  name: String(payload.name || FALLBACK_RESULT.name).trim(),
+  state: String(payload.state || FALLBACK_RESULT.state).trim(),
+  ripeness: String(payload.ripeness || FALLBACK_RESULT.ripeness).trim(),
+  ripening_type: String(payload.ripening_type || FALLBACK_RESULT.ripening_type).trim(),
+  confidence: clampConfidence(payload.confidence),
+  reasoning: String(payload.reasoning || FALLBACK_RESULT.reasoning).trim(),
+  dishes: normalizeList(payload.dishes, FALLBACK_RESULT.dishes).slice(0, 4),
+  recipes: normalizeRecipes(payload.recipes, FALLBACK_RESULT.recipes),
+  source: payload.source || "live",
+  failureReason: payload.failureReason || ""
+});
+
+const buildFallbackResult = (message) =>
+  normalizeResult({
+    ...FALLBACK_RESULT,
+    failureReason: message || FALLBACK_RESULT.failureReason
+  });
+
+const readStoredHistory = () => {
+  try {
+    const raw =
+      window.localStorage.getItem(STORAGE_KEY) ||
+      window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((item) => ({
+        id: item.id || Date.now(),
+        createdAt: item.createdAt || new Date().toISOString(),
+        image: item.image || "",
+        ...normalizeResult(item)
+      }))
+      .slice(0, HISTORY_LIMIT);
+  } catch {
+    return [];
+  }
+};
+
+const writeStoredHistory = (items) => {
+  const trimmed = items.slice(0, HISTORY_LIMIT);
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+  } catch {
+    const compact = trimmed.map(({ image, ...item }) => item);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(compact));
+    } catch {
+      window.localStorage.removeItem(STORAGE_KEY);
     }
   }
+};
 
-  return {
-    name,
-    ripeness: payload.ripeness || "Perfect",
-    ripening_type: payload.ripening_type || "Natural",
-    confidence,
-    dishes: Array.isArray(payload.dishes) ? payload.dishes.slice(0, 3) : [],
-    source: payload.source || "live",
-    fallbackTheme: payload.fallbackTheme || "",
-    fallbackTitle: payload.fallbackTitle || "",
-    fallbackText: payload.fallbackText || "",
-    failureReason: payload.failureReason || ""
-  };
-}
-
-function buildFallbackResult(file, failureReason = "") {
-  const seed = `${file?.name || ""}-${file?.size || 0}-${file?.lastModified || 0}`;
-  let hash = 0;
-
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = (hash + seed.charCodeAt(index) * (index + 1)) % 9973;
-  }
-
-  const variant = FALLBACK_RESULT_VARIANTS[hash % FALLBACK_RESULT_VARIANTS.length];
-
-  return normalizeResult({
-    ...variant,
-    source: "fallback",
-    failureReason: failureReason || "Live AI analysis was unavailable for this scan."
-  });
-}
-
-function formatConfidence(confidence) {
-  if (!confidence) {
-    return "High confidence";
-  }
-
-  if (/^\d+$/.test(String(confidence).trim())) {
-    return `${confidence}% confidence`;
-  }
-
-  if (String(confidence).includes("%")) {
-    return `${confidence} confidence`;
-  }
-
-  return confidence;
-}
-
-function numericConfidence(confidence) {
-  const match = String(confidence || "").match(/\d+/);
-  if (!match) {
-    return 88;
-  }
-
-  const value = Number(match[0]);
-  return Number.isFinite(value) ? Math.max(10, Math.min(100, value)) : 88;
-}
-
-function recipeAccent(label = "") {
-  const lower = label.toLowerCase();
-
-  if (lower.includes("lassi") || lower.includes("shake")) {
-    return { icon: "local_cafe", note: "Rich and cooling" };
-  }
-
-  if (lower.includes("salad") || lower.includes("chaat")) {
-    return { icon: "nutrition", note: "Fresh and bright" };
-  }
-
-  if (lower.includes("pickle")) {
-    return { icon: "soup_kitchen", note: "Bold and tangy" };
-  }
-
-  if (lower.includes("smoothie")) {
-    return { icon: "blender", note: "Smooth and fruity" };
-  }
-
-  if (lower.includes("curry") || lower.includes("salsa")) {
-    return { icon: "lunch_dining", note: "Savory and lively" };
-  }
-
-  return { icon: "restaurant", note: "Chef recommended" };
-}
-
-function screenKey(activeTab, scanPhase) {
-  if (activeTab === "scan") {
-    return `${activeTab}-${scanPhase}`;
-  }
-
-  return activeTab;
-}
-
-function Icon({ name, filled = false }) {
-  return (
-    <span className={`material-symbols-outlined${filled ? " filled" : ""}`} aria-hidden="true">
-      {name}
-    </span>
-  );
-}
-
-function ActionButton({
-  children,
-  className,
-  hover = true,
-  as = "button",
-  transition,
-  ...props
-}) {
-  const Component = m[as];
-
-  return (
-    <Component
-      whileHover={hover ? { scale: 1.02 } : undefined}
-      whileTap={{ scale: 0.96 }}
-      transition={transition || { duration: 0.18, ease: "easeOut" }}
-      className={className}
-      {...props}
-    >
-      {children}
-    </Component>
-  );
-}
-
-function FadeImage({ className, alt, src }) {
-  return (
-    <m.img
-      className={className}
-      src={src}
-      alt={alt}
-      initial={{ opacity: 0, scale: 0.985 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.35, ease: "easeOut" }}
-    />
-  );
-}
-
-function stopMediaStream(stream) {
+const stopMediaStream = (stream) => {
   if (!stream) {
     return;
   }
 
   stream.getTracks().forEach((track) => track.stop());
+};
+
+function Icon({ name, filled = false, className = "" }) {
+  return (
+    <span className={`material-symbols-outlined ${filled ? "filled" : ""} ${className}`} aria-hidden="true">
+      {name}
+    </span>
+  );
+}
+
+function MotionButton({ children, className = "", ...props }) {
+  return (
+    <m.button
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.96 }}
+      transition={{ duration: 0.18, ease: "easeOut" }}
+      className={className}
+      {...props}
+    >
+      {children}
+    </m.button>
+  );
+}
+
+function InfoTile({ label, value }) {
+  return (
+    <div className="rounded-2xl bg-zinc-100 p-4">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-zinc-500">{label}</p>
+      <strong className="mt-2 block break-words font-display text-lg leading-tight md:text-xl">{value}</strong>
+    </div>
+  );
+}
+
+function RecipeAccordion({ recipe, isOpen, onToggle }) {
+  return (
+    <article className="overflow-hidden rounded-2xl border border-black/10 bg-[#f6f8ef]">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-4 p-4 text-left font-black"
+      >
+        <span>{recipe.name}</span>
+        <Icon name={isOpen ? "keyboard_arrow_up" : "keyboard_arrow_down"} />
+      </button>
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <m.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.28, ease: "easeOut" }}
+          >
+            <ol className="grid gap-3 px-4 pb-4">
+              {recipe.steps.map((step, index) => (
+                <li key={`${recipe.name}-${step}`} className="flex gap-3 rounded-xl bg-white/75 p-3 text-sm leading-6 text-zinc-700">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-zinc-950 text-xs font-black text-white">
+                    {index + 1}
+                  </span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+          </m.div>
+        )}
+      </AnimatePresence>
+    </article>
+  );
+}
+
+function ShamiBadge() {
+  return (
+    <div className="pointer-events-none absolute right-4 top-4 z-20 hidden sm:block">
+      <m.img
+        src="/assets/badge_shami.svg"
+        alt="Shami Approved badge"
+        className="h-24 w-24 drop-shadow-xl"
+        initial={{ opacity: 0, scale: 0.82, y: -16 }}
+        animate={{ opacity: 1, scale: [0.82, 1.1, 1], y: 0 }}
+        transition={{ duration: 0.45, ease: "easeOut" }}
+      />
+      <m.img
+        src="/assets/character_shami.svg"
+        alt="Shami character"
+        className="absolute -right-3 top-16 h-28 w-28 drop-shadow-xl"
+        initial={{ opacity: 0, x: 60 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ delay: 0.12, duration: 0.38, ease: "easeOut" }}
+      />
+      <m.div
+        className="absolute right-20 top-20 whitespace-nowrap rounded-lg bg-zinc-950 px-3 py-2 text-sm font-black text-white"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.18, duration: 0.3 }}
+      >
+        <span className="inline-flex items-center gap-1">
+          Shami Approved
+          <Icon name="check_circle" filled className="text-[#f2c94c]" />
+        </span>
+      </m.div>
+    </div>
+  );
+}
+
+function NavButton({ active, featured = false, icon, label, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-2 text-[0.68rem] font-black uppercase tracking-[0.08em] transition-colors ${
+        active
+          ? featured
+            ? "bg-[#f2c94c] text-zinc-950"
+            : "bg-white text-zinc-950"
+          : "text-white/64"
+      }`}
+    >
+      <Icon name={icon} filled={active || featured} className={featured && !active ? "text-[#f2c94c]" : ""} />
+      <span className="max-w-full truncate">{label}</span>
+    </button>
+  );
 }
 
 function App() {
@@ -317,60 +320,56 @@ function App() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const mediaStreamRef = useRef(null);
+  const historyLoadedRef = useRef(false);
 
-  const [activeTab, setActiveTab] = useState("home");
-  const [scanPhase, setScanPhase] = useState("home");
+  const [screen, setScreen] = useState("home");
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedImage, setSelectedImage] = useState("");
   const [analysis, setAnalysis] = useState(EMPTY_RESULT);
   const [history, setHistory] = useState([]);
   const [error, setError] = useState("");
-  const [scanStepIndex, setScanStepIndex] = useState(0);
   const [cameraStatus, setCameraStatus] = useState("idle");
   const [cameraAttempt, setCameraAttempt] = useState(0);
+  const [scanStepIndex, setScanStepIndex] = useState(0);
+  const [openRecipe, setOpenRecipe] = useState("");
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        return;
-      }
-
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        setHistory(parsed);
-      }
-    } catch {
-      setHistory([]);
-    }
+    setHistory(readStoredHistory());
+    historyLoadedRef.current = true;
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+    if (!historyLoadedRef.current) {
+      return;
+    }
+
+    writeStoredHistory(history);
   }, [history]);
 
   useEffect(() => {
-    if (scanPhase !== "scanning") {
+    if (screen !== "scanning") {
       return undefined;
     }
 
     const intervalId = window.setInterval(() => {
       setScanStepIndex((current) => (current + 1) % SCAN_STEPS.length);
-    }, 900);
+    }, 760);
 
     return () => window.clearInterval(intervalId);
-  }, [scanPhase]);
+  }, [screen]);
 
   useEffect(() => {
-    const shouldOpenCamera = activeTab === "scan" && scanPhase === "camera";
-
-    if (!shouldOpenCamera) {
+    if (screen !== "scan") {
       stopMediaStream(mediaStreamRef.current);
       mediaStreamRef.current = null;
       setCameraStatus("idle");
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
+      return undefined;
+    }
+
+    if (selectedImage) {
       return undefined;
     }
 
@@ -381,16 +380,12 @@ function App() {
 
     let cancelled = false;
 
-    async function openCamera() {
+    const openCamera = async () => {
       setCameraStatus("requesting");
 
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: {
-              ideal: "environment"
-            }
-          },
+          video: { facingMode: { ideal: "environment" } },
           audio: false
         });
 
@@ -410,7 +405,7 @@ function App() {
       } catch {
         setCameraStatus("blocked");
       }
-    }
+    };
 
     openCamera();
 
@@ -422,176 +417,139 @@ function App() {
         videoRef.current.srcObject = null;
       }
     };
-  }, [activeTab, scanPhase, cameraAttempt]);
+  }, [screen, selectedImage, cameraAttempt]);
 
-  useEffect(() => {
-    if (activeTab !== "scan" || scanPhase !== "camera") {
-      return;
-    }
+  const recentVariety = useMemo(() => history[0]?.name || "No scans yet", [history]);
+  const scanStep = SCAN_STEPS[scanStepIndex];
+  const isUttarPradesh = analysis.state === "Uttar Pradesh";
+  const showFallbackNote = analysis.source === "fallback" && analysis.failureReason;
 
-    const video = videoRef.current;
-    const stream = mediaStreamRef.current;
-
-    if (!video || !stream) {
-      return;
-    }
-
-    if (video.srcObject !== stream) {
-      video.srcObject = stream;
-    }
-
-    video.play().catch(() => {});
-  }, [activeTab, scanPhase, cameraStatus]);
-
-  const currentStep = SCAN_STEPS[scanStepIndex];
-  const hasHistory = history.length > 0;
-  const recipes = analysis.dishes;
-  const confidenceValue = numericConfidence(analysis.confidence);
-  const isFallbackResult = analysis.source === "fallback";
-
-  function startScanner() {
-    setActiveTab("scan");
+  const goToScan = () => {
     setError("");
-    setScanPhase(selectedFile ? "preview" : "camera");
-  }
+    setScreen("scan");
+  };
 
-  function resetScanner() {
+  const resetScanner = () => {
     setSelectedFile(null);
     setSelectedImage("");
     setAnalysis(EMPTY_RESULT);
     setError("");
-    setActiveTab("scan");
-    setScanPhase("camera");
+    setOpenRecipe("");
+    setScreen("scan");
     setCameraAttempt((current) => current + 1);
-  }
+  };
 
-  function retryCamera() {
-    setError("");
-    setSelectedFile(null);
-    setSelectedImage("");
-    setAnalysis(EMPTY_RESULT);
-    setActiveTab("scan");
-    setScanPhase("camera");
-    setCameraAttempt((current) => current + 1);
-  }
-
-  function goHome() {
-    setActiveTab("home");
-    setError("");
-  }
-
-  function handleBack() {
-    if (activeTab === "history" || activeTab === "profile") {
-      setActiveTab("home");
-      return;
-    }
-
-    if (activeTab === "scan") {
-      if (scanPhase === "results" || scanPhase === "error") {
-        setScanPhase(selectedFile ? "preview" : "camera");
-        setError("");
-        return;
-      }
-
-      if (scanPhase === "preview" || scanPhase === "camera") {
-        setActiveTab("home");
-        return;
-      }
-    }
-
-    setActiveTab("home");
-  }
-
-  async function handleFileSelection(event) {
+  const handleFileSelection = async (event) => {
     const file = event.target.files?.[0];
 
     if (!file) {
       return;
     }
 
-    const dataUrl = await toDataUrl(file);
-    setSelectedFile(file);
-    setSelectedImage(dataUrl);
-    setAnalysis(EMPTY_RESULT);
-    setError("");
-    setActiveTab("scan");
-    setScanPhase("preview");
-    event.target.value = "";
-  }
+    try {
+      const dataUrl = await toDataUrl(file);
+      setSelectedFile(file);
+      setSelectedImage(dataUrl);
+      setAnalysis(EMPTY_RESULT);
+      setError("");
+      setScreen("scan");
+    } catch (readError) {
+      setError(readError.message);
+      setScreen("error");
+    } finally {
+      event.target.value = "";
+    }
+  };
 
-  async function captureFromCamera() {
+  const captureFromCamera = async () => {
     if (cameraStatus === "blocked" || cameraStatus === "unsupported") {
       setError(
         cameraStatus === "blocked"
-          ? "Camera access is blocked. Allow camera permission in the browser to use the in-app camera."
-          : "This browser does not support the in-app camera here. Try a secure HTTPS or localhost session."
+          ? "Camera permission is blocked. Allow camera access or upload a photo."
+          : "This browser cannot open an in-app camera preview. Upload a photo instead."
       );
       return;
     }
 
     if (cameraStatus !== "ready" || !videoRef.current || !canvasRef.current) {
-      setError("Camera is not ready yet. You can still upload a photo from your gallery.");
+      setError("Camera is still warming up. You can upload a gallery photo right away.");
       return;
     }
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    const width = video.videoWidth || 1080;
-    const height = video.videoHeight || 1440;
-
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width = video.videoWidth || 1080;
+    canvas.height = video.videoHeight || 1440;
 
     const context = canvas.getContext("2d");
     if (!context) {
-      setError("Unable to capture from the camera right now.");
+      setError("Unable to capture this frame. Try uploading a photo.");
       return;
     }
 
-    context.drawImage(video, 0, 0, width, height);
-
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
 
     if (!blob) {
-      setError("Unable to capture from the camera right now.");
+      setError("Unable to save this frame. Try uploading a photo.");
       return;
     }
 
-    const file = new File([blob], `mango-${Date.now()}.jpg`, {
-      type: "image/jpeg"
-    });
-
-    setSelectedFile(file);
+    setSelectedFile(new File([blob], `asli-aam-${Date.now()}.jpg`, { type: "image/jpeg" }));
     setSelectedImage(dataUrl);
-    setAnalysis(EMPTY_RESULT);
     setError("");
-    setScanPhase("preview");
-  }
+  };
 
-  async function analyzeImage() {
-    if (!selectedFile) {
-      setError("Choose a mango photo first.");
-      setActiveTab("scan");
-      setScanPhase("error");
+  const saveResult = (nextResult) => {
+    setHistory((current) => [
+      {
+        id: Date.now(),
+        createdAt: new Date().toISOString(),
+        image: selectedImage,
+        ...nextResult
+      },
+      ...current
+    ].slice(0, HISTORY_LIMIT));
+  };
+
+  const speakResult = (result = analysis, force = true) => {
+    if (!("speechSynthesis" in window)) {
       return;
     }
 
-    setError("");
+    if (!force && result.source === "fallback") {
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(
+      `${result.ripeness} ${result.name} mango detected from ${result.state}.`
+    );
+    utterance.rate = 1;
+    utterance.pitch = 1.02;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const analyzeImage = async () => {
+    if (!selectedFile) {
+      setError("Choose or capture a mango photo first.");
+      setScreen("error");
+      return;
+    }
+
     setScanStepIndex(0);
-    setActiveTab("scan");
-    setScanPhase("scanning");
+    setOpenRecipe("");
+    setError("");
+    setScreen("scanning");
 
     try {
       const image = await toDataUrl(selectedFile);
       const response = await fetch("/api/analyze", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image })
       });
-
       const payload = await response.json();
 
       if (!response.ok) {
@@ -599,784 +557,365 @@ function App() {
       }
 
       const nextResult = normalizeResult(payload);
-      const historyEntry = {
-        id: Date.now(),
-        createdAt: new Date().toISOString(),
-        image: selectedImage,
-        ...nextResult
-      };
-
       setAnalysis(nextResult);
-      setHistory((current) => [historyEntry, ...current].slice(0, 12));
-      setScanPhase("results");
+      saveResult(nextResult);
+      setScreen("result");
+      speakResult(nextResult, false);
     } catch (requestError) {
-      const fallbackResult = buildFallbackResult(
-        selectedFile,
-        requestError.message || "We could not analyze this photo live."
-      );
-      const historyEntry = {
-        id: Date.now(),
-        createdAt: new Date().toISOString(),
-        image: selectedImage,
-        ...fallbackResult
-      };
-
-      setError("");
-      setAnalysis(fallbackResult);
-      setHistory((current) => [historyEntry, ...current].slice(0, 12));
-      setScanPhase("results");
+      const nextResult = buildFallbackResult(requestError.message || "Live analysis was unavailable.");
+      setAnalysis(nextResult);
+      saveResult(nextResult);
+      setScreen("result");
     }
-  }
+  };
 
-  function openHistoryItem(item) {
+  const openHistoryItem = (item) => {
     setSelectedImage(item.image || "");
     setSelectedFile(null);
     setAnalysis(normalizeResult(item));
-    setError("");
-    setActiveTab("scan");
-    setScanPhase("results");
-  }
+    setOpenRecipe("");
+    setScreen("result");
+  };
 
-  function speakResult() {
-    if (!("speechSynthesis" in window)) {
-      return;
-    }
+  const clearHistory = () => {
+    setHistory([]);
+    window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+  };
 
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(
-      `${analysis.name || "This mango"} looks ${analysis.ripeness || "perfect"} and ${
-        analysis.ripening_type || "naturally ripened"
-      }. Try ${recipes.join(", ")}.`
-    );
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    window.speechSynthesis.speak(utterance);
-  }
+  const hiddenUpload = (
+    <>
+      <input
+        id={uploadInputId}
+        ref={uploadInputRef}
+        className="sr-only"
+        type="file"
+        accept="image/*"
+        onChange={handleFileSelection}
+      />
+      <canvas ref={canvasRef} className="sr-only" aria-hidden="true" />
+    </>
+  );
 
-  function renderHome() {
-    return (
-      <m.section className="screen home-screen" {...pageTransition}>
-        <div className="hero-panel">
-          <div className="hero-copy">
-            <p className="eyebrow">Hyper-Graphic Editorial</p>
-            <h1>Scan your mango like it belongs on a billboard.</h1>
-            <p className="hero-text">
-              A clean mobile-first scanner for variety guesses, ripeness reads, and exact dish
-              suggestions that feel polished enough for a demo reel.
-            </p>
-
-            <div className="hero-actions">
-              <ActionButton className="primary-pill" type="button" onClick={startScanner}>
-                <Icon name="center_focus_strong" filled />
-                Scan Now
-              </ActionButton>
-              <ActionButton
-                className="secondary-pill"
-                type="button"
-                onClick={() => setActiveTab("history")}
-              >
-                <Icon name="history" />
-                View History
-              </ActionButton>
-            </div>
-          </div>
-
-          <div className="hero-art">
-            <m.div
-              className="logo-orbit"
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 16, ease: "linear" }}
-            />
-            <m.img
-              className="hero-logo"
-              src={logoImage}
-              alt="Asli Aam logo"
-              initial={{ opacity: 0, scale: 0.92, rotate: -4 }}
-              animate={{ opacity: 1, scale: [0.92, 1.03, 1], rotate: 0 }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
-            />
-            <m.div
-              className="floating-chip chip-top"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.15 }}
-            >
-              Works in seconds
-            </m.div>
-            <m.div
-              className="floating-chip chip-bottom"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.22 }}
-            >
-              Real photo analysis
-            </m.div>
-          </div>
-        </div>
-
-        <div className="feature-ribbon">
-          <m.article className="feature-card" whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
-            <Icon name="image" />
-            <strong>Upload or capture</strong>
-            <p>Use your camera live on phone or pick from gallery on desktop.</p>
-          </m.article>
-          <m.article
-            className="feature-card feature-card-offset"
-            whileHover={{ scale: 1.02 }}
-            transition={{ duration: 0.2 }}
-          >
-            <Icon name="neurology" />
-            <strong>Smart responses</strong>
-            <p>Structured output for mango name, ripeness, and recipe ideas.</p>
-          </m.article>
-          <m.article className="feature-card" whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
-            <Icon name="restaurant" />
-            <strong>Recipe ready</strong>
-            <p>Dish cards render the exact recipe names returned by the API.</p>
-          </m.article>
-        </div>
-      </m.section>
-    );
-  }
-
-  function renderCamera() {
-    const previewStyle = selectedImage ? { backgroundImage: `url(${selectedImage})` } : undefined;
-    const showLiveCamera = !selectedImage && cameraStatus === "ready";
-    const showCameraFallback = !selectedImage && cameraStatus !== "ready";
-    const isCameraIssue = cameraStatus === "blocked" || cameraStatus === "unsupported";
-    const cameraMessage =
-      cameraStatus === "requesting"
-        ? "Allow camera access to keep capture fully inside this screen."
-        : cameraStatus === "blocked"
-          ? "Browser permission is currently blocking the in-app camera."
-          : cameraStatus === "unsupported"
-            ? "This session cannot open an embedded camera preview."
-            : "Live camera preview stays inside the app.";
-
-    return (
-      <m.section className="screen camera-screen" {...pageTransition}>
-        <div className="camera-stage">
-          <div className="camera-background" style={previewStyle}>
-            {!selectedImage && (
-              <video
-                ref={videoRef}
-                className={`camera-video${showLiveCamera ? "" : " hidden"}`}
-                autoPlay
-                playsInline
-                muted
-              />
-            )}
-
-            {showCameraFallback && (
-              <div className="camera-placeholder">
-                <div className="camera-placeholder-card">
-                  <m.img
-                    className="camera-logo"
-                    src={logoImage}
-                    alt="Asli Aam sticker logo"
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.35, ease: "easeOut" }}
-                  />
-                  <div className="camera-status-copy">
-                    <strong>
-                      {cameraStatus === "requesting"
-                        ? "Opening camera..."
-                        : cameraStatus === "blocked"
-                          ? "Camera access blocked"
-                          : cameraStatus === "unsupported"
-                            ? "In-page camera unavailable"
-                            : "Camera ready"}
-                    </strong>
-                    <p>
-                      {cameraStatus === "requesting"
-                        ? "Allow camera permission to scan right inside the app."
-                        : cameraStatus === "blocked"
-                          ? "Enable camera access in the browser, then retry to keep capture inside this UI."
-                          : cameraStatus === "unsupported"
-                            ? "Embedded camera preview needs a supported secure browser context."
-                            : "Live camera preview opens here inside the app."}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-            <div className="camera-shade" />
-          </div>
-
-          <div className="camera-frame">
-            <div className="frame-corner top-left" />
-            <div className="frame-corner top-right" />
-            <div className="frame-corner bottom-left" />
-            <div className="frame-corner bottom-right" />
-            <div className="scan-beam static" />
-          </div>
-
-          <div className="camera-hint">
-            {selectedImage
-              ? "Mango locked in frame"
-              : showLiveCamera
-                ? "Center the mango in the frame"
-                : "Camera preview opens here inside the app"}
-          </div>
-        </div>
-
-        <div className="camera-controls">
-          <div className={`camera-status-banner${isCameraIssue ? " warning" : ""}`}>
-            <Icon name={isCameraIssue ? "warning" : "videocam"} />
-            <span>{selectedImage ? "Review the captured frame before analysis." : cameraMessage}</span>
-          </div>
-
-          <div className="capture-row">
-            <ActionButton className="utility-button" type="button" onClick={goHome}>
-              <Icon name="arrow_back" />
-            </ActionButton>
-
-            <ActionButton
-              className="capture-button"
-              type="button"
-              onClick={selectedImage ? analyzeImage : captureFromCamera}
-            >
-              <span className="capture-button-inner">
-                <Icon name={selectedImage ? "center_focus_strong" : "photo_camera"} filled />
-              </span>
-            </ActionButton>
-
-            <ActionButton className="utility-button" type="button" onClick={resetScanner}>
-              <Icon name="refresh" />
-            </ActionButton>
-          </div>
-
-          <div className="camera-action-row">
-            <ActionButton
-              className="ghost-pill"
-              type="button"
-              onClick={retryCamera}
-            >
-              <Icon name={selectedImage ? "cameraswitch" : "videocam"} />
-              {selectedImage ? "Retake live" : "Open live camera"}
-            </ActionButton>
-            <ActionButton
-              className="ghost-pill"
-              type="button"
-              onClick={() => uploadInputRef.current?.click()}
-            >
-              <Icon name="image" />
-              Upload gallery
-            </ActionButton>
-          </div>
-
-          {selectedImage && (
-            <ActionButton className="analyze-link" type="button" onClick={analyzeImage}>
-              Analyze this mango
-            </ActionButton>
-          )}
-
-          {!selectedImage && error && <p className="camera-inline-error">{error}</p>}
-        </div>
-
-        <input
-          id={uploadInputId}
-          ref={uploadInputRef}
-          className="sr-only"
-          type="file"
-          accept="image/*"
-          onChange={handleFileSelection}
-        />
-        <canvas ref={canvasRef} className="sr-only" aria-hidden="true" />
-      </m.section>
-    );
-  }
-
-  function renderScanning() {
-    return (
-      <m.section className="screen scanning-screen" {...pageTransition}>
-        <div className="scan-glow scan-glow-top" />
-        <div className="scan-glow scan-glow-bottom" />
-
-        <div className="scan-photo-shell">
-          <m.div
-            className="scan-photo"
-            animate={{ scale: [1, 1.025, 1] }}
-            transition={{ repeat: Infinity, duration: 1.8, ease: "easeInOut" }}
-            style={selectedImage ? { backgroundImage: `url(${selectedImage})` } : undefined}
-          >
-            {!selectedImage && <img src={logoImage} alt="Asli Aam loader logo" />}
-            <m.div
-              className="scan-line"
-              animate={{ y: ["8%", "90%", "8%"] }}
-              transition={{ repeat: Infinity, duration: 2.1, ease: "easeInOut" }}
-            />
-          </m.div>
-        </div>
-
-        <div className="loading-copy">
-          <AnimatePresence mode="wait">
-            <m.div
-              key={currentStep.title}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.22, ease: "easeOut" }}
-            >
-              <h2>{currentStep.title}</h2>
-              <p>{currentStep.detail}</p>
-            </m.div>
-          </AnimatePresence>
-        </div>
-
-        <div className="progress-track">
-          <m.div
-            className="progress-bar"
-            initial={{ width: "28%" }}
-            animate={{ width: `${36 + scanStepIndex * 22}%` }}
-            transition={{ duration: 0.35, ease: "easeOut" }}
-          />
-        </div>
-
-        <div className="scan-metrics">
-          <m.div className="metric-card" whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
-            <Icon name="palette" />
-            <span>Chromatics</span>
-            <strong>{88 + scanStepIndex}% processed</strong>
-          </m.div>
-          <m.div className="metric-card" whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
-            <Icon name="opacity" />
-            <span>Juice Content</span>
-            <strong>{scanStepIndex === 2 ? "Locked" : "Calculating..."}</strong>
-          </m.div>
-        </div>
-
-        <ActionButton className="ghost-pill cancel-pill" type="button" onClick={resetScanner}>
-          Cancel Scan
-          <Icon name="close" />
-        </ActionButton>
-      </m.section>
-    );
-  }
-
-  function renderResults() {
-    return (
-      <m.section className="screen results-screen" {...pageTransition}>
-        <m.div
-          className={`result-hero${isFallbackResult ? ` fallback-theme ${analysis.fallbackTheme}` : ""}`}
-          initial={{ opacity: 0, y: 80 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
-        >
-          <div className="result-image-shell">
-            {selectedImage ? (
-              <FadeImage className="result-image" src={selectedImage} alt={analysis.name || "Scanned mango"} />
-            ) : (
-              <FadeImage className="result-image" src={logoImage} alt="Asli Aam logo" />
-            )}
-          </div>
-
-          <m.div
-            className="result-summary glass-card"
-            variants={staggerParent}
-            initial="hidden"
-            animate="visible"
-          >
-            <div className="confetti-dots" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
-
-            {isFallbackResult && (
-              <m.div className={`fallback-banner fallback-${analysis.fallbackTheme}`} variants={staggerItem}>
-                <div>
-                  <p className="eyebrow">Backup Result Card</p>
-                  <strong>{analysis.fallbackTitle || "Static studio read"}</strong>
-                  <p>{analysis.fallbackText || "Always-on mode stepped in for this scan."}</p>
-                </div>
-                <span className="fallback-pill">Always-on mode</span>
-              </m.div>
-            )}
-
-            <m.div className="result-summary-header" variants={staggerItem}>
-              <div>
-                <p className="eyebrow">{isFallbackResult ? "Best-Effort Result" : "Identification Result"}</p>
-                <h2>{analysis.name || "Classic mango"}</h2>
-              </div>
-              <span className="confidence-badge">{formatConfidence(analysis.confidence)}</span>
-            </m.div>
-
-            <m.div className="confidence-panel" variants={staggerItem}>
-              <div className="confidence-copy">
-                <span>Confidence</span>
-                <strong>{confidenceValue}%</strong>
-              </div>
-              <div className="confidence-track">
-                <m.div
-                  className="confidence-fill"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${confidenceValue}%` }}
-                  transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
-                />
-              </div>
-            </m.div>
-
-            <m.div className="detail-grid" variants={staggerItem}>
-              <div className="detail-box">
-                <p>Ripeness</p>
-                <strong>{analysis.ripeness || "Perfect"}</strong>
-              </div>
-              <div className="detail-box">
-                <p>Type</p>
-                <strong>{analysis.ripening_type || "Natural"}</strong>
-              </div>
-            </m.div>
-
-            <m.div className="result-chip-row" variants={staggerItem}>
-              <span className="result-chip">{isFallbackResult ? "Static backup" : "Demo ready"}</span>
-              <span className="result-chip">{isFallbackResult ? "Scan saved" : "Fast read"}</span>
-            </m.div>
-
-            {isFallbackResult && analysis.failureReason && (
-              <m.p className="fallback-reason" variants={staggerItem}>
-                Live analysis note: {analysis.failureReason}
-              </m.p>
-            )}
+  const renderHome = () => (
+    <m.section className="mx-auto grid min-h-[calc(100dvh-7rem)] w-full max-w-6xl content-center gap-5 px-4 py-5 md:gap-8 md:px-8 md:py-8" {...pageTransition}>
+      <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+        <m.div className="relative overflow-hidden rounded-[2rem] border border-black/10 bg-white/80 p-6 shadow-[0_30px_80px_rgba(16,24,20,0.12)] backdrop-blur md:p-10" variants={stagger} initial="hidden" animate="visible">
+          <div className="absolute inset-x-0 top-0 h-2 bg-[linear-gradient(90deg,#f2c94c,#11998e,#ef476f)]" />
+          <m.p className="mb-4 text-xs font-black uppercase tracking-[0.24em] text-emerald-700" variants={rise}>Indian mango intelligence</m.p>
+          <m.h1 className="max-w-3xl break-words font-display text-[2.7rem] font-black leading-[0.92] text-zinc-950 md:text-7xl" variants={rise}>Scan the aam. Know the story.</m.h1>
+          <m.p className="mt-5 max-w-2xl text-lg leading-8 text-zinc-700" variants={rise}>
+            Identify variety, origin, ripeness, ripening style, and recipes from a single mango photo.
+          </m.p>
+          <m.div className="mt-8 flex flex-col gap-3 sm:flex-row" variants={rise}>
+            <MotionButton type="button" onClick={goToScan} className="inline-flex min-h-14 items-center justify-center gap-3 rounded-lg bg-zinc-950 px-6 font-black text-white shadow-[0_14px_0_#f2c94c]">
+              <Icon name="center_focus_strong" filled /> Scan Now
+            </MotionButton>
+            <MotionButton type="button" onClick={() => uploadInputRef.current?.click()} className="inline-flex min-h-14 items-center justify-center gap-3 rounded-lg border border-zinc-950 bg-[#f2c94c] px-6 font-black text-zinc-950">
+              <Icon name="upload" /> Upload Photo
+            </MotionButton>
           </m.div>
         </m.div>
+        <m.div className="relative overflow-hidden rounded-[2rem] bg-zinc-950 p-5 text-white shadow-[0_30px_80px_rgba(16,24,20,0.18)]" initial={{ opacity: 0, scale: 0.96, rotate: -1 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} transition={{ duration: 0.4, ease: "easeOut" }}>
+          <m.img src={logoImage} alt="Asli Aam logo" className="aspect-square w-full rounded-2xl object-cover" animate={{ y: [0, -8, 0] }} transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }} />
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-lg bg-white/10 p-4"><p className="text-xs uppercase tracking-[0.18em] text-white/60">Saved</p><strong className="mt-2 block text-3xl">{history.length}</strong></div>
+            <div className="rounded-lg bg-white/10 p-4"><p className="text-xs uppercase tracking-[0.18em] text-white/60">Latest</p><strong className="mt-2 block truncate text-lg">{recentVariety}</strong></div>
+          </div>
+        </m.div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
+        {VARIETIES.map(([name, state, traits], index) => (
+          <m.article key={name} className="rounded-lg border border-black/10 bg-white/70 p-4 shadow-sm backdrop-blur" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.03, duration: 0.3 }} whileHover={{ scale: 1.02 }}>
+            <strong className="block font-display text-base">{name}</strong>
+            <span className="mt-1 block text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">{state}</span>
+            <p className="mt-3 text-sm leading-5 text-zinc-600">{traits}</p>
+          </m.article>
+        ))}
+      </div>
+      {hiddenUpload}
+    </m.section>
+  );
 
-        <m.section
-          className="recipes-section"
-          variants={staggerParent}
-          initial="hidden"
-          animate="visible"
-        >
-          <m.div className="section-heading" variants={staggerItem}>
-            <div>
-              <p className="eyebrow">{isFallbackResult ? "Backup Pairing Suggestions" : "Exact API Suggestions"}</p>
-              <h3>Recipe ideas</h3>
-            </div>
-            <ActionButton
-              className="text-link"
-              type="button"
-              hover={false}
-              onClick={() => setActiveTab("history")}
-            >
-              Open history
-            </ActionButton>
-          </m.div>
+  const renderScan = () => {
+    const hasLiveCamera = !selectedImage && cameraStatus === "ready";
+    const previewStyle = selectedImage ? { backgroundImage: `url(${selectedImage})` } : undefined;
 
-          <div className="recipe-grid">
-            {recipes.length ? (
-              recipes.map((recipe, index) => {
-                const accent = recipeAccent(recipe);
-                return (
-                  <m.article
-                    className="recipe-card"
-                    key={`${recipe}-${index}`}
-                    variants={staggerItem}
-                    whileHover={{ scale: 1.02 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <div className="recipe-icon">
-                      <Icon name={accent.icon} />
-                    </div>
-                    <strong>{recipe}</strong>
-                    <p>{accent.note}</p>
-                  </m.article>
-                );
-              })
-            ) : (
-              <m.article className="recipe-card" variants={staggerItem}>
-                <div className="recipe-icon">
-                  <Icon name="info" />
-                </div>
-                <strong>No recipes returned</strong>
-                <p>The API did not provide dish suggestions for this scan.</p>
-              </m.article>
+    return (
+      <m.section className="mx-auto grid min-h-[calc(100dvh-7rem)] w-full max-w-6xl gap-4 px-4 py-5 md:grid-cols-[1.05fr_0.95fr] md:items-center md:gap-5 md:px-8 md:py-6" {...pageTransition}>
+        <div className="relative min-h-[52dvh] overflow-hidden rounded-[2rem] bg-zinc-950 shadow-[0_34px_100px_rgba(16,24,20,0.22)] md:min-h-[58dvh]">
+          <div className="absolute inset-0 bg-cover bg-center" style={previewStyle}>
+            {!selectedImage && (
+              <video ref={videoRef} className={`h-full w-full object-cover ${hasLiveCamera ? "opacity-100" : "opacity-0"}`} autoPlay playsInline muted />
             )}
           </div>
-        </m.section>
-
-        <div className="cta-stack">
-          <ActionButton className="primary-pill full-width" type="button" onClick={resetScanner}>
-            <Icon name="center_focus_strong" filled />
-            Scan Another
-          </ActionButton>
-          <ActionButton className="secondary-pill full-width" type="button" onClick={speakResult}>
-            <Icon name="volume_up" />
-            Read Result Aloud
-          </ActionButton>
-        </div>
-      </m.section>
-    );
-  }
-
-  function renderError() {
-    return (
-      <m.section className="screen error-screen" {...pageTransition}>
-        <div className="error-hero">
-          <div className="error-sticker">
-            <FadeImage src={selectedImage || logoImage} alt="Mango scan error preview" />
-            <div className="question-badge">
-              <Icon name="question_mark" />
+          {!selectedImage && !hasLiveCamera && (
+            <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_top,#f2c94c,#11998e_46%,#101814)] p-6 text-center text-white">
+              <div className="max-w-sm rounded-2xl bg-black/30 p-5 backdrop-blur">
+                <img src={logoImage} alt="Asli Aam logo" className="mx-auto h-28 w-28 rounded-2xl object-cover" />
+                <strong className="mt-4 block text-xl">
+                  {cameraStatus === "requesting" ? "Opening camera" : cameraStatus === "blocked" ? "Camera blocked" : cameraStatus === "unsupported" ? "Camera unavailable" : "Ready for a mango"}
+                </strong>
+                <p className="mt-2 text-sm leading-6 text-white/75">Use camera on HTTPS or upload a photo from the gallery.</p>
+              </div>
             </div>
-            <div className="error-chip left-chip">Lighting issue?</div>
-            <div className="error-chip right-chip">Lens smudge?</div>
-          </div>
-
-          <div className="error-copy">
-            <h2>Couldn't analyze properly</h2>
-            <p>
-              {error ||
-                "Even the best harvesters get confused sometimes. Try a brighter, steadier shot."}
-            </p>
-          </div>
-
-          <div className="cta-stack">
-            <ActionButton className="primary-pill full-width" type="button" onClick={resetScanner}>
-              <Icon name="refresh" />
-              Try Again
-            </ActionButton>
-            <ActionButton className="secondary-pill full-width" type="button" onClick={goHome}>
-              <Icon name="home" />
-              Go Back Home
-            </ActionButton>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/55" />
+          <div className="absolute inset-x-8 bottom-24 top-8 rounded-[1.6rem] border-2 border-dashed border-[#f2c94c] shadow-[0_0_0_999px_rgba(0,0,0,0.22)]" />
+          <div className="absolute bottom-8 left-1/2 w-[calc(100%-3rem)] -translate-x-1/2 rounded-lg bg-white/90 px-4 py-3 text-center font-black text-zinc-950 backdrop-blur">
+            {selectedImage ? "Preview locked. Run the AI scan." : "Center one mango inside the frame."}
           </div>
         </div>
 
-        <div className="tips-grid">
-          {ERROR_TIPS.map((tip) => (
-            <m.article
-              className="tip-card"
-              key={tip.title}
-              whileHover={{ scale: 1.02 }}
-              transition={{ duration: 0.2 }}
-            >
-              <Icon name={tip.icon} />
-              <strong>{tip.title}</strong>
-              <p>{tip.text}</p>
-            </m.article>
-          ))}
+        <div className="rounded-[2rem] border border-black/10 bg-white/85 p-5 shadow-[0_30px_80px_rgba(16,24,20,0.12)] backdrop-blur md:p-7">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">Scan input</p>
+              <h2 className="mt-2 font-display text-3xl font-black leading-none text-zinc-950 md:text-4xl">Camera or upload</h2>
+            </div>
+            <MotionButton type="button" onClick={() => setScreen("home")} className="grid h-12 w-12 place-items-center rounded-lg bg-zinc-100 text-zinc-950" aria-label="Back home">
+              <Icon name="close" />
+            </MotionButton>
+          </div>
+          <div className="mt-6 grid gap-3">
+            <MotionButton type="button" onClick={selectedImage ? analyzeImage : captureFromCamera} className="inline-flex min-h-16 items-center justify-center gap-3 rounded-lg bg-zinc-950 px-6 font-black text-white shadow-[0_12px_0_#11998e]">
+              <Icon name={selectedImage ? "auto_awesome" : "photo_camera"} filled /> {selectedImage ? "Analyze Mango" : "Capture Frame"}
+            </MotionButton>
+            <MotionButton type="button" onClick={() => uploadInputRef.current?.click()} className="inline-flex min-h-14 items-center justify-center gap-3 rounded-lg border border-zinc-950 bg-[#f2c94c] px-6 font-black text-zinc-950">
+              <Icon name="image" /> Upload Gallery Photo
+            </MotionButton>
+            <MotionButton type="button" onClick={resetScanner} className="inline-flex min-h-14 items-center justify-center gap-3 rounded-lg bg-zinc-100 px-6 font-black text-zinc-950">
+              <Icon name="refresh" /> Reset Scanner
+            </MotionButton>
+          </div>
+          {error && <p className="mt-4 rounded-lg bg-rose-50 p-3 text-sm font-bold text-rose-700">{error}</p>}
+          <div className="mt-6 rounded-2xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-950">
+            The image is sent to the protected backend route. API keys never reach the browser.
+          </div>
         </div>
+        {hiddenUpload}
       </m.section>
     );
-  }
+  };
 
-  function renderHistory() {
-    return (
-      <m.section className="screen history-screen" {...pageTransition}>
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Saved scans</p>
-            <h2>History</h2>
+  const renderScanning = () => (
+    <m.section className="relative grid min-h-[100dvh] place-items-center overflow-hidden bg-zinc-950 px-5 py-8 text-white" {...pageTransition}>
+      <div className="absolute inset-0 bg-cover bg-center opacity-45" style={selectedImage ? { backgroundImage: `url(${selectedImage})` } : undefined} />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#f2c94c55,transparent_34%),linear-gradient(180deg,rgba(16,24,20,0.25),#101814)]" />
+      <div className="relative grid w-full max-w-xl justify-items-center gap-6 text-center">
+        <m.div className="relative aspect-[0.82] w-72 overflow-hidden rounded-[2rem] border border-white/20 bg-white/10 shadow-[0_30px_90px_rgba(0,0,0,0.36)]" animate={{ scale: [1, 1.025, 1] }} transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }} style={selectedImage ? { backgroundImage: `url(${selectedImage})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}>
+          <m.div className="absolute left-4 right-4 h-1 rounded-full bg-[#f2c94c] shadow-[0_0_30px_#f2c94c]" animate={{ y: [20, 330, 20] }} transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }} />
+        </m.div>
+        <AnimatePresence mode="wait">
+          <m.div key={scanStep} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.25 }}>
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-[#f2c94c]">AI vision scan</p>
+            <h2 className="mt-3 font-display text-4xl font-black">{scanStep}</h2>
+          </m.div>
+        </AnimatePresence>
+      </div>
+    </m.section>
+  );
+
+  const renderResult = () => (
+    <m.section className="mx-auto grid min-h-[calc(100dvh-7rem)] w-full max-w-6xl gap-5 px-4 py-5 md:px-8 md:py-6" {...pageTransition}>
+      <div className="flex items-center justify-between gap-4">
+        <MotionButton type="button" onClick={() => setScreen("home")} className="inline-flex min-h-12 items-center gap-2 rounded-lg bg-white px-4 font-black text-zinc-950 shadow-sm">
+          <Icon name="arrow_back" /> Home
+        </MotionButton>
+        <MotionButton type="button" onClick={resetScanner} className="inline-flex min-h-12 items-center gap-2 rounded-lg bg-zinc-950 px-4 font-black text-white">
+          <Icon name="center_focus_strong" filled /> Scan Again
+        </MotionButton>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+        <m.div className="relative overflow-hidden rounded-[2rem] bg-zinc-950 p-4 shadow-[0_34px_100px_rgba(16,24,20,0.18)]" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+          <img src={selectedImage || logoImage} alt={`${analysis.name || "Mango"} scan`} className="aspect-[0.86] w-full rounded-2xl object-cover" />
+          <div className="absolute left-7 top-7 rounded-lg bg-white/90 px-4 py-2 text-sm font-black text-zinc-950 backdrop-blur">
+            {analysis.source === "fallback" ? "Fallback read" : "AI vision read"}
           </div>
-          <ActionButton className="text-link" type="button" hover={false} onClick={startScanner}>
-            New scan
-          </ActionButton>
-        </div>
+          {analysis.source !== "fallback" && (
+            <m.div className="pointer-events-none absolute inset-x-8 top-10 h-1 rounded-full bg-[#f2c94c] shadow-[0_0_24px_#f2c94c]" initial={{ y: 0, opacity: 0 }} animate={{ y: [0, 420], opacity: [0, 1, 0] }} transition={{ duration: 1.5, ease: "easeInOut" }} />
+          )}
+        </m.div>
 
-        {hasHistory ? (
-          <div className="history-list">
-            {history.map((item) => (
-              <ActionButton
-                className="history-card"
-                key={item.id}
-                type="button"
-                onClick={() => openHistoryItem(item)}
-              >
-                <div className="history-card-image">
-                  <FadeImage src={item.image || logoImage} alt={item.name || "Saved mango scan"} />
-                </div>
-                <div className="history-card-copy">
-                  <div className="history-card-top">
-                    <strong>{item.name}</strong>
-                    <span>{new Date(item.createdAt).toLocaleDateString()}</span>
-                  </div>
-                  <p>
-                    {item.ripeness} | {item.ripening_type}
-                  </p>
-                  <small>
-                    {item.source === "fallback"
-                      ? "Backup result card"
-                      : (item.dishes || []).slice(0, 2).join(" | ") || "Tap to reopen scan"}
-                  </small>
-                </div>
-              </ActionButton>
+        <m.div className="relative overflow-hidden rounded-[2rem] border border-black/10 bg-white/90 p-5 shadow-[0_34px_100px_rgba(16,24,20,0.14)] backdrop-blur md:p-7" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.06 }}>
+          {isUttarPradesh && <ShamiBadge />}
+          <m.div variants={stagger} initial="hidden" animate="visible">
+            <m.p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700" variants={rise}>Identification result</m.p>
+            <m.h1 className="mt-3 break-words font-display text-4xl font-black leading-none text-zinc-950 md:text-6xl" variants={rise}>{analysis.name}</m.h1>
+            <m.p className="mt-4 text-lg font-bold text-zinc-700" variants={rise}>Origin: <span className="text-zinc-950">{analysis.state}</span></m.p>
+            {isUttarPradesh && (
+              <m.div className="mt-4 inline-flex items-center gap-2 rounded-lg bg-zinc-950 px-3 py-2 text-sm font-black text-white sm:hidden" variants={rise}>
+                Shami Approved
+                <Icon name="check_circle" filled className="text-[#f2c94c]" />
+              </m.div>
+            )}
+            <m.div className="mt-6 grid gap-3 sm:grid-cols-3" variants={rise}>
+              <InfoTile label="Ripeness" value={analysis.ripeness} />
+              <InfoTile label="Ripening" value={analysis.ripening_type} />
+              <InfoTile label="Confidence" value={`${analysis.confidence}%`} />
+            </m.div>
+            <m.div className="mt-6" variants={rise}>
+              <div className="mb-2 flex items-center justify-between text-sm font-black"><span>Confidence bar</span><span>{analysis.confidence}%</span></div>
+              <div className="h-4 overflow-hidden rounded-full bg-zinc-100">
+                <m.div className="h-full rounded-full bg-[linear-gradient(90deg,#11998e,#f2c94c,#ef476f)]" initial={{ width: 0 }} animate={{ width: `${analysis.confidence}%` }} transition={{ duration: 0.45, ease: "easeOut" }} />
+              </div>
+            </m.div>
+            <m.div className="mt-6 rounded-2xl bg-[#f6f8ef] p-4" variants={rise}>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Visual reasoning</p>
+              <p className="mt-2 leading-7 text-zinc-700">{analysis.reasoning}</p>
+            </m.div>
+            {showFallbackNote && <m.p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm font-bold text-amber-800" variants={rise}>{analysis.failureReason}</m.p>}
+          </m.div>
+        </m.div>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
+        <section className="rounded-[2rem] bg-zinc-950 p-5 text-white md:p-7">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-[#f2c94c]">Dish ideas</p>
+          <div className="mt-5 grid gap-3">
+            {analysis.dishes.map((dish, index) => (
+              <m.button key={dish} type="button" onClick={() => setOpenRecipe(analysis.recipes[index % analysis.recipes.length]?.name || "")} className="rounded-lg bg-white/10 p-4 text-left font-black transition-colors hover:bg-white/15" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }}>
+                {dish}
+              </m.button>
             ))}
           </div>
-        ) : (
-          <div className="empty-panel">
-            <FadeImage src={logoImage} alt="Asli Aam logo badge" />
-            <h3>No scans yet</h3>
-            <p>Your recent mango reads will show up here after the first successful analysis.</p>
-            <ActionButton className="primary-pill" type="button" onClick={startScanner}>
-              <Icon name="photo_camera" />
-              Start first scan
-            </ActionButton>
+        </section>
+        <section className="rounded-[2rem] border border-black/10 bg-white/90 p-5 shadow-[0_28px_80px_rgba(16,24,20,0.1)] md:p-7">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">Full recipes</p>
+          <div className="mt-5 grid gap-3">
+            {analysis.recipes.map((recipe, index) => (
+              <RecipeAccordion key={recipe.name} recipe={recipe} isOpen={openRecipe ? openRecipe === recipe.name : index === 0} onToggle={() => setOpenRecipe((current) => (current === recipe.name ? "" : recipe.name))} />
+            ))}
           </div>
-        )}
-      </m.section>
-    );
-  }
+          <MotionButton type="button" onClick={() => speakResult(analysis)} className="mt-5 inline-flex min-h-12 items-center gap-2 rounded-lg bg-[#f2c94c] px-4 font-black text-zinc-950">
+            <Icon name="volume_up" /> Read Result Aloud
+          </MotionButton>
+        </section>
+      </div>
+    </m.section>
+  );
 
-  function renderProfile() {
-    return (
-      <m.section className="screen profile-screen" {...pageTransition}>
-        <div className="profile-hero glass-card">
-          <FadeImage className="profile-logo" src={logoImage} alt="Asli Aam logo" />
+  const renderError = () => (
+    <m.section className="grid min-h-[100dvh] place-items-center px-5 py-8" {...pageTransition}>
+      <div className="max-w-lg rounded-[2rem] border border-black/10 bg-white/90 p-7 text-center shadow-[0_34px_100px_rgba(16,24,20,0.14)]">
+        <img src={logoImage} alt="Asli Aam logo" className="mx-auto h-32 w-32 rounded-2xl object-cover" />
+        <h1 className="mt-6 font-display text-4xl font-black text-zinc-950">Try another shot</h1>
+        <p className="mt-3 leading-7 text-zinc-700">{error || "The scanner needs a brighter, steadier mango photo."}</p>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <MotionButton type="button" onClick={resetScanner} className="min-h-13 rounded-lg bg-zinc-950 px-5 font-black text-white">Retry</MotionButton>
+          <MotionButton type="button" onClick={() => uploadInputRef.current?.click()} className="min-h-13 rounded-lg bg-[#f2c94c] px-5 font-black text-zinc-950">Upload</MotionButton>
+        </div>
+      </div>
+      {hiddenUpload}
+    </m.section>
+  );
+
+  const renderHistory = () => (
+    <m.section className="mx-auto grid min-h-[calc(100dvh-7rem)] w-full max-w-5xl content-start gap-5 px-4 py-6 md:px-8" {...pageTransition}>
+      <div className="rounded-[2rem] border border-black/10 bg-white/85 p-5 shadow-[0_28px_80px_rgba(16,24,20,0.12)] backdrop-blur md:p-7">
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">Local browser data</p>
+        <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="eyebrow">Brand Profile</p>
-            <h2>Asli Aam</h2>
-            <p className="profile-text">
-              A playful premium mango scanner designed for smooth motion, beautiful mobile
-              presentation, and confident fruit intelligence.
+            <h1 className="font-display text-4xl font-black leading-none text-zinc-950 md:text-5xl">Scan history</h1>
+            <p className="mt-3 max-w-2xl leading-7 text-zinc-700">
+              Saved only in this browser. Recent scans stay available even after refresh.
             </p>
           </div>
-        </div>
-
-        <div className="stats-grid">
-          <m.article className="stat-card" whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
-            <span>Scans saved</span>
-            <strong>{history.length}</strong>
-          </m.article>
-          <m.article className="stat-card" whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
-            <span>Last result</span>
-            <strong>{history[0]?.name || "None yet"}</strong>
-          </m.article>
-        </div>
-
-        <div className="profile-facts">
-          {PROFILE_FACTS.map((fact) => (
-            <m.article
-              className="fact-card"
-              key={fact.title}
-              whileHover={{ scale: 1.02 }}
-              transition={{ duration: 0.2 }}
+          {history.length > 0 && (
+            <MotionButton
+              type="button"
+              onClick={clearHistory}
+              className="min-h-11 rounded-lg bg-zinc-100 px-4 text-sm font-black text-zinc-950"
             >
-              <Icon name={fact.icon} />
-              <div>
-                <strong>{fact.title}</strong>
-                <p>{fact.text}</p>
-              </div>
-            </m.article>
+              Clear history
+            </MotionButton>
+          )}
+        </div>
+      </div>
+
+      {history.length ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {history.map((item) => (
+            <m.button
+              key={item.id}
+              type="button"
+              onClick={() => openHistoryItem(item)}
+              className="grid grid-cols-[5rem_1fr] gap-3 rounded-2xl border border-black/10 bg-white/85 p-3 text-left shadow-sm backdrop-blur"
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <img src={item.image || logoImage} alt={item.name} className="h-20 w-20 rounded-xl object-cover" />
+              <span className="min-w-0">
+                <strong className="block break-words font-display text-lg leading-tight">{item.name}</strong>
+                <span className="mt-1 block text-sm font-bold text-emerald-700">{item.state}</span>
+                <span className="mt-2 block text-sm text-zinc-600">
+                  {item.ripeness} | {item.ripening_type} | {item.confidence}%
+                </span>
+                <span className="mt-1 block text-xs font-bold uppercase tracking-[0.14em] text-zinc-400">
+                  {new Date(item.createdAt).toLocaleDateString()}
+                </span>
+              </span>
+            </m.button>
           ))}
         </div>
-      </m.section>
+      ) : (
+        <div className="rounded-[2rem] border border-black/10 bg-white/85 p-7 text-center shadow-sm backdrop-blur">
+          <img src={logoImage} alt="Asli Aam logo" className="mx-auto h-28 w-28 rounded-2xl object-cover" />
+          <h2 className="mt-5 font-display text-3xl font-black">No scans saved yet</h2>
+          <p className="mx-auto mt-3 max-w-md leading-7 text-zinc-700">
+            Scan or upload a mango and the result will be stored here on this device.
+          </p>
+          <MotionButton
+            type="button"
+            onClick={goToScan}
+            className="mt-5 inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 font-black text-white"
+          >
+            <Icon name="center_focus_strong" filled />
+            Start scan
+          </MotionButton>
+        </div>
+      )}
+      {hiddenUpload}
+    </m.section>
+  );
+
+  const bottomNav = () => {
+    if (screen === "scanning") {
+      return null;
+    }
+
+    return (
+      <m.nav
+        className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <div className="mx-auto grid max-w-sm grid-cols-3 gap-1 rounded-2xl border border-white/10 bg-zinc-950/95 p-2 text-white shadow-[0_18px_50px_rgba(16,24,20,0.22)] backdrop-blur">
+          <NavButton active={screen === "home"} icon="home" label="Home" onClick={() => setScreen("home")} />
+          <NavButton active={screen === "scan"} icon="center_focus_strong" label="Scan" onClick={resetScanner} featured />
+          <NavButton active={screen === "history"} icon="history" label={`History ${history.length ? history.length : ""}`} onClick={() => setScreen("history")} />
+        </div>
+      </m.nav>
     );
-  }
-
-  function renderMainContent() {
-    if (activeTab === "history") {
-      return renderHistory();
-    }
-
-    if (activeTab === "profile") {
-      return renderProfile();
-    }
-
-    if (activeTab === "home") {
-      return renderHome();
-    }
-
-    if (scanPhase === "scanning") {
-      return renderScanning();
-    }
-
-    if (scanPhase === "results") {
-      return renderResults();
-    }
-
-    if (scanPhase === "error") {
-      return renderError();
-    }
-
-    return renderCamera();
-  }
-
-  const hideNav = activeTab === "scan" && scanPhase === "scanning";
+  };
 
   return (
     <LazyMotion features={domAnimation}>
-      <div className="app-shell">
-        <div className="page-noise" aria-hidden="true" />
-
-        {!hideNav && (
-          <header className="top-bar">
-            <div className="brand-lockup">
-              <ActionButton className="icon-pill" type="button" hover={false} onClick={handleBack}>
-                <Icon
-                  name={activeTab === "home" ? "center_focus_strong" : "arrow_back"}
-                  filled={activeTab === "home"}
-                />
-              </ActionButton>
-
-              <div>
-                <p className="eyebrow">Asli Aam</p>
-                <h1 className="top-title">
-                  {activeTab === "home"
-                    ? "Mango Scanner"
-                    : activeTab === "history"
-                      ? "Scan History"
-                      : activeTab === "profile"
-                        ? "Profile"
-                        : scanPhase === "results"
-                          ? isFallbackResult
-                            ? "Backup Result"
-                            : "Scan Results"
-                          : scanPhase === "error"
-                            ? "Try Another Shot"
-                            : "Ready to Scan"}
-                </h1>
-              </div>
-            </div>
-
-            <m.div
-              className="top-logo"
-              initial={{ opacity: 0, scale: 0.92 }}
-              animate={{ opacity: 1, scale: [0.92, 1.04, 1] }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
-            >
-              <img src={logoImage} alt="Asli Aam logo" />
-            </m.div>
-          </header>
-        )}
-
-        <main className={`main-shell${hideNav ? " no-nav-layout" : ""}`}>
-          <AnimatePresence mode="wait" initial={false}>
-            <div key={screenKey(activeTab, scanPhase)}>{renderMainContent()}</div>
-          </AnimatePresence>
-        </main>
-
-        {!hideNav && (
-          <nav className="floating-tray" aria-label="Primary">
-            <ActionButton
-              className={`tray-button${activeTab === "home" ? " active" : ""}`}
-              type="button"
-              onClick={() => setActiveTab("home")}
-            >
-              <Icon name="home" filled={activeTab === "home"} />
-            </ActionButton>
-            <ActionButton
-              className={`tray-button${activeTab === "scan" ? " active scan-active" : ""}`}
-              type="button"
-              onClick={startScanner}
-            >
-              <Icon name="center_focus_strong" filled={activeTab === "scan"} />
-            </ActionButton>
-            <ActionButton
-              className={`tray-button${activeTab === "history" ? " active" : ""}`}
-              type="button"
-              onClick={() => setActiveTab("history")}
-            >
-              <Icon name="history" filled={activeTab === "history"} />
-            </ActionButton>
-            <ActionButton
-              className={`tray-button${activeTab === "profile" ? " active" : ""}`}
-              type="button"
-              onClick={() => setActiveTab("profile")}
-            >
-              <Icon name="person" filled={activeTab === "profile"} />
-            </ActionButton>
-          </nav>
-        )}
+      <div className="min-h-dvh bg-[#f7f8ef] text-zinc-950">
+        <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_10%_10%,rgba(242,201,76,0.34),transparent_24%),radial-gradient(circle_at_90%_15%,rgba(17,153,142,0.24),transparent_22%),linear-gradient(180deg,#f7f8ef,#f4fff9_48%,#fff7f0)]" />
+        <div className="pointer-events-none fixed inset-0 opacity-[0.12] [background-image:linear-gradient(#101814_1px,transparent_1px),linear-gradient(90deg,#101814_1px,transparent_1px)] [background-size:34px_34px]" />
+        <AnimatePresence mode="wait" initial={false}>
+          <div key={screen} className="relative z-10 pb-[calc(6rem+env(safe-area-inset-bottom))]">
+            {screen === "home" && renderHome()}
+            {screen === "scan" && renderScan()}
+            {screen === "scanning" && renderScanning()}
+            {screen === "result" && renderResult()}
+            {screen === "history" && renderHistory()}
+            {screen === "error" && renderError()}
+          </div>
+        </AnimatePresence>
+        {bottomNav()}
       </div>
     </LazyMotion>
   );

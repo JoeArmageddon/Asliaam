@@ -1,4 +1,4 @@
-import { analyzeMangoImage } from "../lib/analyzeMango.js";
+import { analyzeMangoImage, buildFallbackAnalysis } from "../lib/analyzeMango.js";
 
 async function readJsonBody(req) {
   if (req.body && typeof req.body === "object") {
@@ -34,9 +34,9 @@ export default async function handler(req, res) {
     });
   }
 
-  if (!process.env.OPENROUTER_API_KEY && !process.env.GROQ_API_KEY) {
+  if (!process.env.OPENROUTER_API_KEY) {
     return res.status(500).json({
-      error: "Missing AI API keys. Add OPENROUTER_API_KEY or GROQ_API_KEY in the deployment environment."
+      error: "Missing OPENROUTER_API_KEY in the deployment environment."
     });
   }
 
@@ -57,10 +57,10 @@ export default async function handler(req, res) {
       })
     );
   } catch (error) {
-    return res.status(500).json({
-      error:
-        error.message ||
-        "Unable to analyze the mango right now. Please try another photo."
-    });
+    return res.status(200).json(
+      buildFallbackAnalysis(
+        error.message || "Unable to analyze the mango right now. Showing a safe fallback."
+      )
+    );
   }
 }

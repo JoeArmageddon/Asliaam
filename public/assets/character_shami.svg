@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 300" role="img" aria-labelledby="title desc">
+  <title id="title">Shami Character</title>
+  <desc id="desc">A cheerful mango mascot character.</desc>
+  <defs>
+    <linearGradient id="body" x1="63" y1="36" x2="199" y2="259" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE66D"/>
+      <stop offset="0.5" stop-color="#F2B83B"/>
+      <stop offset="1" stop-color="#EF476F"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="124" y1="18" x2="196" y2="89" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#21B88B"/>
+      <stop offset="1" stop-color="#05634D"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="133" cy="162" rx="78" ry="104" fill="#101814"/>
+  <path fill="url(#body)" d="M124 43c62 12 93 68 78 130-15 65-59 108-105 94-45-13-64-64-50-119C61 92 79 49 124 43Z"/>
+  <path fill="url(#leaf)" d="M125 51c9-34 36-45 75-34-5 36-30 57-72 60 16-11 28-25 38-42-15 9-28 14-41 16Z"/>
+  <circle cx="100" cy="142" r="9" fill="#101814"/>
+  <circle cx="149" cy="142" r="9" fill="#101814"/>
+  <path fill="none" stroke="#101814" stroke-linecap="round" stroke-width="8" d="M102 174c17 17 43 17 61 0"/>
+  <path fill="none" stroke="#101814" stroke-linecap="round" stroke-width="14" d="M55 179c-25 7-36 22-38 43M205 174c25 1 40 13 48 33"/>
+  <path fill="#FFF8DB" d="M82 219c18 10 50 16 83 0-11 26-25 40-45 41-19 0-31-15-38-41Z"/>
+  <path fill="#101814" d="M73 276c16 11 33 13 49 5l-4 14H69l4-19ZM149 280c16 7 32 5 47-6l6 21h-50l-3-15Z"/>
+</svg>

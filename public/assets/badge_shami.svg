@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-labelledby="title desc">
+  <title id="title">Shami Approved Badge</title>
+  <desc id="desc">A green and yellow approval badge for Uttar Pradesh mango results.</desc>
+  <defs>
+    <linearGradient id="gold" x1="30" y1="22" x2="210" y2="218" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8D84E"/>
+      <stop offset="0.55" stop-color="#F2A93B"/>
+      <stop offset="1" stop-color="#EF476F"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="64" y1="54" x2="188" y2="186" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#13A57B"/>
+      <stop offset="1" stop-color="#05634D"/>
+    </linearGradient>
+  </defs>
+  <path fill="#101814" d="m120 8 21 28 34-8 7 34 34 7-8 34 28 21-28 21 8 34-34 7-7 34-34-8-21 28-21-28-34 8-7-34-34-7 8-34-28-21 28-21-8-34 34-7 7-34 34 8 21-28Z"/>
+  <path fill="url(#gold)" d="m120 24 18 25 29-8 6 30 30 6-8 29 25 18-25 18 8 29-30 6-6 30-29-8-18 25-18-25-29 8-6-30-30-6 8-29-25-18 25-18-8-29 30-6 6-30 29 8 18-25Z"/>
+  <circle cx="120" cy="124" r="72" fill="#FFF8DB"/>
+  <path fill="url(#leaf)" d="M83 118c8-34 39-51 81-45-3 41-25 72-65 75 16-11 30-28 41-50-20 15-39 22-57 20Z"/>
+  <path fill="#101814" d="m74 135 15-15 22 22 48-56 17 14-64 75-38-40Z"/>
+  <text x="120" y="190" text-anchor="middle" fill="#101814" font-family="Arial, sans-serif" font-size="20" font-weight="900">SHAMI</text>
+  <text x="120" y="211" text-anchor="middle" fill="#101814" font-family="Arial, sans-serif" font-size="15" font-weight="900">APPROVED</text>
+</svg>
