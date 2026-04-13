@@ -52,6 +52,8 @@ Each backend result must map to one of these mangoes and expose the associated s
 - Added agricultural guide knowledge from `mango_varities.pdf` and `Mango_Handling_and_Ripening_Protocol_Eng.pdf` without changing the API/UI result contract.
 - Added `scripts/extractMangoGuideKnowledge.mjs` and `npm run extract:mango-knowledge` to read both PDFs and emit summarized structured rules only, not full PDF text.
 - Added `lib/mangoGuideKnowledge.js` as the compact cached rule set appended to the existing system prompt. The prompt remains lightweight and still sends only the user image plus `mango_types_india.jpeg` reference image.
+- Final accuracy pass: backend now verifies the selected mango against trait keywords from the model reasoning, corrects state from the canonical dataset, validates ripeness from visual reasoning cues, repairs reasoning so it includes visual comparison, and uses safe spoiled-fruit dish/recipe fallbacks.
+- Shami assets now import from root `/assets` PNG files and render responsively with fade, bounce, slide, and scale motion.
 
 ## Deployment Notes
 

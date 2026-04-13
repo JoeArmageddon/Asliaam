@@ -1,5 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, LazyMotion, domAnimation, m } from "framer-motion";
+import badgeShamiImage from "../assets/badge_shami.png";
+import characterShamiImage from "../assets/character_shami.png";
 import logoImage from "./assets/asli-aam-logo.jpg";
 
 const STORAGE_KEY = "asli-aam-scan-history-v2";
@@ -263,25 +265,25 @@ function RecipeAccordion({ recipe, isOpen, onToggle }) {
 
 function ShamiBadge() {
   return (
-    <div className="pointer-events-none absolute right-4 top-4 z-20 hidden sm:block">
+    <div className="pointer-events-none absolute right-3 top-3 z-20 block sm:right-4 sm:top-4">
       <m.img
-        src="/assets/badge_shami.svg"
+        src={badgeShamiImage}
         alt="Shami Approved badge"
-        className="h-24 w-24 drop-shadow-xl"
+        className="h-16 w-16 rounded-full object-contain drop-shadow-xl sm:h-24 sm:w-24"
         initial={{ opacity: 0, scale: 0.82, y: -16 }}
         animate={{ opacity: 1, scale: [0.82, 1.1, 1], y: 0 }}
         transition={{ duration: 0.45, ease: "easeOut" }}
       />
       <m.img
-        src="/assets/character_shami.svg"
+        src={characterShamiImage}
         alt="Shami character"
-        className="absolute -right-3 top-16 h-28 w-28 drop-shadow-xl"
+        className="absolute -right-2 top-11 h-16 w-16 object-contain drop-shadow-xl sm:-right-3 sm:top-16 sm:h-28 sm:w-28"
         initial={{ opacity: 0, x: 60 }}
-        animate={{ opacity: 1, x: 0 }}
+        animate={{ opacity: 1, x: 0, scale: [0.96, 1.04, 1] }}
         transition={{ delay: 0.12, duration: 0.38, ease: "easeOut" }}
       />
       <m.div
-        className="absolute right-20 top-20 whitespace-nowrap rounded-lg bg-zinc-950 px-3 py-2 text-sm font-black text-white"
+        className="absolute right-14 top-14 hidden whitespace-nowrap rounded-lg bg-zinc-950 px-3 py-2 text-sm font-black text-white sm:right-20 sm:top-20 sm:block"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.18, duration: 0.3 }}
