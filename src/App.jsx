@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, LazyMotion, domAnimation, m } from "framer-motion";
+import badgeShamiImage from "../assets/badge_shami.png";
+import characterShamiImage from "../assets/character_shami.png";
 import logoImage from "./assets/asli-aam-logo.jpg";
 import { readShamiMode, resolveSecretTap, writeShamiMode } from "./shamiMode.js";
 
 const STORAGE_KEY = "asli-aam-scan-history-v2";
 const LEGACY_STORAGE_KEY = "asli-aam-scan-history";
 const HISTORY_LIMIT = 8;
-const SHAMI_BADGE_IMAGE = "/assets/badge_shami.svg";
-const SHAMI_CHARACTER_IMAGE = "/assets/character_shami.svg";
 
 const FALLBACK_RESULT = {
   is_mango: true,
@@ -327,7 +327,7 @@ function ShamiBadge() {
   return (
     <div className="pointer-events-none absolute right-3 top-3 z-20 block sm:right-4 sm:top-4">
       <m.img
-        src={SHAMI_BADGE_IMAGE}
+        src={badgeShamiImage}
         alt="Shami Approved badge"
         className="h-16 w-16 rounded-full object-contain drop-shadow-xl sm:h-24 sm:w-24"
         initial={{ opacity: 0, scale: 0.82, y: -16 }}
@@ -335,7 +335,7 @@ function ShamiBadge() {
         transition={{ duration: 0.45, ease: "easeOut" }}
       />
       <m.img
-        src={SHAMI_CHARACTER_IMAGE}
+        src={characterShamiImage}
         alt="Shami character"
         className="absolute -right-2 top-11 h-16 w-16 object-contain drop-shadow-xl sm:-right-3 sm:top-16 sm:h-28 sm:w-28"
         initial={{ opacity: 0, x: 60 }}
