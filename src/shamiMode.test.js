@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  isShamiModeLongPress,
   readShamiMode,
-  resolveSecretTap,
+  SHAMI_MODE_LONG_PRESS_MS,
   SHAMI_MODE_STORAGE_KEY,
   writeShamiMode
 } from "./shamiMode.js";
@@ -29,23 +30,10 @@ test("persists shami mode with the hidden storage key", () => {
   assert.equal(readShamiMode(storage), false);
 });
 
-test("toggles only after three secret taps within two seconds", () => {
-  const firstTap = resolveSecretTap([], 1000);
-  assert.equal(firstTap.shouldToggle, false);
-
-  const secondTap = resolveSecretTap(firstTap.tapTimes, 2100);
-  assert.equal(secondTap.shouldToggle, false);
-
-  const thirdTap = resolveSecretTap(secondTap.tapTimes, 2900);
-  assert.equal(thirdTap.shouldToggle, true);
-  assert.deepEqual(thirdTap.tapTimes, []);
+test("recognizes a two second logo long press", () => {
+  assert.equal(isShamiModeLongPress(1000, 1000 + SHAMI_MODE_LONG_PRESS_MS), true);
 });
 
-test("does not toggle when the three taps are too far apart", () => {
-  const firstTap = resolveSecretTap([], 1000);
-  const secondTap = resolveSecretTap(firstTap.tapTimes, 2500);
-  const thirdTap = resolveSecretTap(secondTap.tapTimes, 3201);
-
-  assert.equal(thirdTap.shouldToggle, false);
-  assert.deepEqual(thirdTap.tapTimes, [2500, 3201]);
+test("ignores short logo presses", () => {
+  assert.equal(isShamiModeLongPress(1000, 2999), false);
 });

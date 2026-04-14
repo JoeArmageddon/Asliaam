@@ -3,7 +3,7 @@ import { AnimatePresence, LazyMotion, domAnimation, m } from "framer-motion";
 import badgeShamiImage from "../assets/badge_shami.png";
 import characterShamiImage from "../assets/character_shami.png";
 import logoImage from "./assets/asli-aam-logo.jpg";
-import { readShamiMode, resolveSecretTap, writeShamiMode } from "./shamiMode.js";
+import { SHAMI_MODE_LONG_PRESS_MS, readShamiMode, writeShamiMode } from "./shamiMode.js";
 
 const STORAGE_KEY = "asli-aam-scan-history-v2";
 const LEGACY_STORAGE_KEY = "asli-aam-scan-history";
@@ -384,7 +384,7 @@ function App() {
   const canvasRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const historyLoadedRef = useRef(false);
-  const secretTapTimesRef = useRef([]);
+  const shamiLogoHoldTimeoutRef = useRef(null);
   const shamiToastTimeoutRef = useRef(null);
 
   const [screen, setScreen] = useState("home");
@@ -407,6 +407,10 @@ function App() {
     historyLoadedRef.current = true;
 
     return () => {
+      if (shamiLogoHoldTimeoutRef.current) {
+        window.clearTimeout(shamiLogoHoldTimeoutRef.current);
+      }
+
       if (shamiToastTimeoutRef.current) {
         window.clearTimeout(shamiToastTimeoutRef.current);
       }
@@ -433,29 +437,26 @@ function App() {
     });
   }, [showShamiModeToast]);
 
-  useEffect(() => {
-    const handleSecretCornerTap = (event) => {
-      const isBottomRightCorner =
-        event.clientX >= window.innerWidth - 72 && event.clientY >= window.innerHeight - 72;
+  const cancelShamiLogoHold = useCallback(() => {
+    if (!shamiLogoHoldTimeoutRef.current) {
+      return;
+    }
 
-      if (!isBottomRightCorner) {
-        return;
-      }
+    window.clearTimeout(shamiLogoHoldTimeoutRef.current);
+    shamiLogoHoldTimeoutRef.current = null;
+  }, []);
 
-      const secretTap = resolveSecretTap(secretTapTimesRef.current, Date.now());
-      secretTapTimesRef.current = secretTap.tapTimes;
+  const startShamiLogoHold = useCallback((event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
 
-      if (secretTap.shouldToggle) {
-        toggleShamiMode();
-      }
-    };
-
-    window.addEventListener("pointerup", handleSecretCornerTap, { passive: true });
-
-    return () => {
-      window.removeEventListener("pointerup", handleSecretCornerTap);
-    };
-  }, [toggleShamiMode]);
+    cancelShamiLogoHold();
+    shamiLogoHoldTimeoutRef.current = window.setTimeout(() => {
+      shamiLogoHoldTimeoutRef.current = null;
+      toggleShamiMode();
+    }, SHAMI_MODE_LONG_PRESS_MS);
+  }, [cancelShamiLogoHold, toggleShamiMode]);
 
   useEffect(() => {
     if (!historyLoadedRef.current) {
@@ -747,7 +748,19 @@ function App() {
           </m.div>
         </m.div>
         <m.div className="relative overflow-hidden rounded-[2rem] bg-zinc-950 p-5 text-white shadow-[0_30px_80px_rgba(16,24,20,0.18)]" initial={{ opacity: 0, scale: 0.96, rotate: -1 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} transition={{ duration: 0.4, ease: "easeOut" }}>
-          <m.img src={logoImage} alt="Asli Aam logo" className="aspect-square w-full rounded-2xl object-cover" animate={{ y: [0, -8, 0] }} transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }} />
+          <m.img
+            src={logoImage}
+            alt="Asli Aam logo"
+            className="aspect-square w-full select-none rounded-2xl object-cover"
+            draggable={false}
+            onContextMenu={(event) => event.preventDefault()}
+            onPointerCancel={cancelShamiLogoHold}
+            onPointerDown={startShamiLogoHold}
+            onPointerLeave={cancelShamiLogoHold}
+            onPointerUp={cancelShamiLogoHold}
+            animate={{ y: [0, -8, 0] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+          />
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div className="rounded-lg bg-white/10 p-4"><p className="text-xs uppercase tracking-[0.18em] text-white/60">Saved</p><strong className="mt-2 block text-3xl">{history.length}</strong></div>
             <div className="rounded-lg bg-white/10 p-4"><p className="text-xs uppercase tracking-[0.18em] text-white/60">Latest</p><strong className="mt-2 block truncate text-lg">{recentVariety}</strong></div>

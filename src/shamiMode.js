@@ -1,4 +1,5 @@
 export const SHAMI_MODE_STORAGE_KEY = "shamiMode";
+export const SHAMI_MODE_LONG_PRESS_MS = 2000;
 
 export const readShamiMode = (storage) => {
   try {
@@ -16,12 +17,5 @@ export const writeShamiMode = (storage, enabled) => {
   }
 };
 
-export const resolveSecretTap = (tapTimes = [], tapTime = Date.now(), windowMs = 2000) => {
-  const recentTapTimes = [...tapTimes, tapTime].filter((time) => tapTime - time <= windowMs);
-  const shouldToggle = recentTapTimes.length >= 3;
-
-  return {
-    shouldToggle,
-    tapTimes: shouldToggle ? [] : recentTapTimes
-  };
-};
+export const isShamiModeLongPress = (startTime, endTime, thresholdMs = SHAMI_MODE_LONG_PRESS_MS) =>
+  endTime - startTime >= thresholdMs;
