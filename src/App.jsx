@@ -1,12 +1,13 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, LazyMotion, domAnimation, m } from "framer-motion";
-import badgeShamiImage from "../assets/badge_shami.png";
-import characterShamiImage from "../assets/character_shami.png";
 import logoImage from "./assets/asli-aam-logo.jpg";
+import { readShamiMode, resolveSecretTap, writeShamiMode } from "./shamiMode.js";
 
 const STORAGE_KEY = "asli-aam-scan-history-v2";
 const LEGACY_STORAGE_KEY = "asli-aam-scan-history";
 const HISTORY_LIMIT = 8;
+const SHAMI_BADGE_IMAGE = "/assets/badge_shami.svg";
+const SHAMI_CHARACTER_IMAGE = "/assets/character_shami.svg";
 
 const FALLBACK_RESULT = {
   is_mango: true,
@@ -326,7 +327,7 @@ function ShamiBadge() {
   return (
     <div className="pointer-events-none absolute right-3 top-3 z-20 block sm:right-4 sm:top-4">
       <m.img
-        src={badgeShamiImage}
+        src={SHAMI_BADGE_IMAGE}
         alt="Shami Approved badge"
         className="h-16 w-16 rounded-full object-contain drop-shadow-xl sm:h-24 sm:w-24"
         initial={{ opacity: 0, scale: 0.82, y: -16 }}
@@ -334,7 +335,7 @@ function ShamiBadge() {
         transition={{ duration: 0.45, ease: "easeOut" }}
       />
       <m.img
-        src={characterShamiImage}
+        src={SHAMI_CHARACTER_IMAGE}
         alt="Shami character"
         className="absolute -right-2 top-11 h-16 w-16 object-contain drop-shadow-xl sm:-right-3 sm:top-16 sm:h-28 sm:w-28"
         initial={{ opacity: 0, x: 60 }}
@@ -349,6 +350,7 @@ function ShamiBadge() {
       >
         <span className="inline-flex items-center gap-1">
           Shami Approved
+          <span aria-hidden="true">✅</span>
           <Icon name="check_circle" filled className="text-[#f2c94c]" />
         </span>
       </m.div>
@@ -382,12 +384,16 @@ function App() {
   const canvasRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const historyLoadedRef = useRef(false);
+  const secretTapTimesRef = useRef([]);
+  const shamiToastTimeoutRef = useRef(null);
 
   const [screen, setScreen] = useState("home");
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedImage, setSelectedImage] = useState("");
   const [analysis, setAnalysis] = useState(EMPTY_RESULT);
   const [history, setHistory] = useState([]);
+  const [shamiMode, setShamiMode] = useState(false);
+  const [shamiToast, setShamiToast] = useState("");
   const [error, setError] = useState("");
   const [cameraStatus, setCameraStatus] = useState("idle");
   const [cameraAttempt, setCameraAttempt] = useState(0);
@@ -397,8 +403,59 @@ function App() {
 
   useEffect(() => {
     setHistory(readStoredHistory());
+    setShamiMode(readShamiMode(window.localStorage));
     historyLoadedRef.current = true;
+
+    return () => {
+      if (shamiToastTimeoutRef.current) {
+        window.clearTimeout(shamiToastTimeoutRef.current);
+      }
+    };
   }, []);
+
+  const showShamiModeToast = useCallback((enabled) => {
+    if (shamiToastTimeoutRef.current) {
+      window.clearTimeout(shamiToastTimeoutRef.current);
+    }
+
+    setShamiToast(enabled ? "Shami Mode Activated" : "Shami Mode Disabled");
+    shamiToastTimeoutRef.current = window.setTimeout(() => {
+      setShamiToast("");
+    }, 1500);
+  }, []);
+
+  const toggleShamiMode = useCallback(() => {
+    setShamiMode((current) => {
+      const next = !current;
+      writeShamiMode(window.localStorage, next);
+      showShamiModeToast(next);
+      return next;
+    });
+  }, [showShamiModeToast]);
+
+  useEffect(() => {
+    const handleSecretCornerTap = (event) => {
+      const isBottomRightCorner =
+        event.clientX >= window.innerWidth - 72 && event.clientY >= window.innerHeight - 72;
+
+      if (!isBottomRightCorner) {
+        return;
+      }
+
+      const secretTap = resolveSecretTap(secretTapTimesRef.current, Date.now());
+      secretTapTimesRef.current = secretTap.tapTimes;
+
+      if (secretTap.shouldToggle) {
+        toggleShamiMode();
+      }
+    };
+
+    window.addEventListener("pointerup", handleSecretCornerTap, { passive: true });
+
+    return () => {
+      window.removeEventListener("pointerup", handleSecretCornerTap);
+    };
+  }, [toggleShamiMode]);
 
   useEffect(() => {
     if (!historyLoadedRef.current) {
@@ -483,7 +540,7 @@ function App() {
 
   const recentVariety = useMemo(() => history[0]?.name || "No scans yet", [history]);
   const scanStep = SCAN_STEPS[scanStepIndex];
-  const isUttarPradesh = analysis.state === "Uttar Pradesh";
+  const showShamiApproval = analysis.state === "Uttar Pradesh" && shamiMode;
   const showFallbackNote = analysis.source === "fallback" && analysis.failureReason;
 
   const goToScan = () => {
@@ -816,14 +873,15 @@ function App() {
         </m.div>
 
         <m.div className="relative overflow-hidden rounded-[2rem] border border-black/10 bg-white/90 p-5 shadow-[0_34px_100px_rgba(16,24,20,0.14)] backdrop-blur md:p-7" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.06 }}>
-          {isUttarPradesh && <ShamiBadge />}
+          {showShamiApproval && <ShamiBadge />}
           <m.div variants={stagger} initial="hidden" animate="visible">
             <m.p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700" variants={rise}>Identification result</m.p>
             <m.h1 className="mt-3 break-words font-display text-4xl font-black leading-none text-zinc-950 md:text-6xl" variants={rise}>{analysis.name}</m.h1>
             <m.p className="mt-4 text-lg font-bold text-zinc-700" variants={rise}>Origin: <span className="text-zinc-950">{analysis.state}</span></m.p>
-            {isUttarPradesh && (
+            {showShamiApproval && (
               <m.div className="mt-4 inline-flex items-center gap-2 rounded-lg bg-zinc-950 px-3 py-2 text-sm font-black text-white sm:hidden" variants={rise}>
                 Shami Approved
+                <span aria-hidden="true">✅</span>
                 <Icon name="check_circle" filled className="text-[#f2c94c]" />
               </m.div>
             )}
@@ -1055,6 +1113,19 @@ function App() {
             {screen === "history" && renderHistory()}
             {screen === "error" && renderError()}
           </div>
+        </AnimatePresence>
+        <AnimatePresence>
+          {shamiToast && (
+            <m.div
+              className="fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 mx-auto w-fit rounded-lg bg-zinc-950/90 px-4 py-2 text-sm font-black text-white shadow-[0_14px_40px_rgba(16,24,20,0.22)] backdrop-blur"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+            >
+              {shamiToast}
+            </m.div>
+          )}
         </AnimatePresence>
         {bottomNav()}
       </div>
