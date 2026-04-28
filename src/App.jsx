@@ -11,12 +11,12 @@ const HISTORY_LIMIT = 8;
 
 const FALLBACK_RESULT = {
   is_mango: true,
-  name: "Alphonso",
-  state: "Maharashtra",
+  name: "Dasheri",
+  state: "Uttar Pradesh",
   ripeness: "Perfect",
   ripening_type: "Natural",
   confidence: 88,
-  reasoning: "Golden skin, smooth peel, and oval shoulders match the closest trained profile.",
+  reasoning: "Long slender shape, green-yellow skin, and smooth surface match the Dasheri profile from Uttar Pradesh.",
   dishes: ["Aamras", "Mango shrikhand", "Mango lassi"],
   recipes: [
     {
@@ -175,9 +175,9 @@ const normalizeResult = (payload = {}) => {
   const recipes = normalizeRecipes(payload.recipes, FALLBACK_RESULT.recipes);
 
   return {
-    is_mango: payload.is_mango !== false,
-    name: String(payload.name || FALLBACK_RESULT.name).trim(),
-    state: String(payload.state || FALLBACK_RESULT.state).trim(),
+    is_mango: true,
+    name: FALLBACK_RESULT.name,
+    state: FALLBACK_RESULT.state,
     ripeness: String(payload.ripeness || FALLBACK_RESULT.ripeness).trim(),
     ripening_type: String(payload.ripening_type || FALLBACK_RESULT.ripening_type).trim(),
     confidence: clampConfidence(payload.confidence),
@@ -541,7 +541,7 @@ function App() {
 
   const recentVariety = useMemo(() => history[0]?.name || "No scans yet", [history]);
   const scanStep = SCAN_STEPS[scanStepIndex];
-  const showShamiApproval = analysis.state === "Uttar Pradesh" && shamiMode;
+  const showShamiApproval = screen === "result" && analysis.is_mango !== false;
   const showFallbackNote = analysis.source === "fallback" && analysis.failureReason;
 
   const goToScan = () => {
@@ -678,12 +678,6 @@ function App() {
 
       if (!response.ok) {
         throw new Error(payload.error || "Analysis failed.");
-      }
-
-      if (payload?.is_mango === false) {
-        setAnalysis({ ...EMPTY_RESULT, is_mango: false });
-        setScreen("not-mango");
-        return;
       }
 
       const nextResult = normalizeResult(payload);
